@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Display};
 
-use chrono::Local;
+use chrono::{Datelike, Local};
 use serde::{Deserialize, Serialize};
 
 use crate::calendar_error::CalendarError;
@@ -35,22 +35,51 @@ impl Calendar {
         Err(CalendarError::EventNotFound(eid))
     }
 
-    pub fn list_events<F>(&self, filter: F) -> Vec<&Event>
-    where
-        F: Fn(&Vec<Event>) -> Vec<&Event>,
-    {
-        filter(&self.events)
+    pub fn list_events(&self) -> Vec<&Event> {
+        let mut v = Vec::new();
+        for ev in &self.events {
+            v.push(ev);
+        }
+        v
     }
     pub fn list_events_today(&self) -> Vec<&Event> {
         let mut events_today = Vec::new();
         // get current date
-        let curr_date = Local::today();
+        let curr_date = Local::today().naive_local();
         for ev in &self.events {
-            if ev.get_start_date() == curr_date {
+            if curr_date == ev.get_start_date() {
                 events_today.push(ev);
             }
         }
         events_today
+    }
+    pub fn list_events_week(&self) -> Vec<&Event> {
+        let mut events_week = Vec::new();
+        // get current date
+        let week = Local::today();
+
+        for ev in &self.events {
+            if ev.get_start_date().iso_week() == week.iso_week() {
+                events_week.push(ev);
+            }
+        }
+        events_week
+    }
+
+    pub fn list_events_month(&self) -> Vec<&Event> {
+        let mut events_month = Vec::new();
+        // get current date
+        let dt = Local::today();
+        let curr_month = dt.month();
+        let curr_year = dt.year();
+
+        for ev in &self.events {
+            if ev.get_start_date().month() == curr_month && ev.get_start_date().year() == curr_year
+            {
+                events_month.push(ev);
+            }
+        }
+        events_month
     }
 }
 
@@ -58,7 +87,7 @@ impl Display for Calendar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "--- {} ---\n# events: {}\n",
+            "--- Calendar: {} ---\n# events: {}",
             self.name,
             self.events.len()
         )
@@ -67,8 +96,10 @@ impl Display for Calendar {
 
 #[cfg(test)]
 mod tests {
+    use chrono::Datelike;
+
     use crate::calendar::Calendar;
-    use crate::event::Event;
+    use crate::event::{self, Event};
 
     #[test]
     /// tests the event addition method
@@ -90,6 +121,36 @@ mod tests {
     }
 
     #[test]
+    /// tests adding multiple different events
+    fn test_event_multiple() {
+        use std::iter::zip;
+        // defines some events
+        let v = vec![
+            Event::new("title1", "desc1", "11/02/2001", "-", 3.6),
+            Event::new("title2", "desc2", "08/09/2011", "-", 3.6),
+            Event::new("title3", "desc3", "11/02/2001", "-", 3.6),
+            Event::new("title4", "desc4", "13/04/1999", "-", 3.6),
+            Event::new("title5", "desc5", "21/01/2021", "-", 3.6),
+            Event::new("title6", "desc6", "13/03/2001", "-", 3.6),
+            Event::new("title7", "desc7", "12/12/2012", "-", 3.6),
+        ];
+
+        let mut cal = Calendar::new("test_multiple_cal");
+        for ev in v.clone() {
+            cal.add_event(ev);
+        }
+
+        for ev in zip(cal.list_events(), &v) {
+            assert_eq!(ev.0.get_eid(), ev.1.get_eid());
+            assert_eq!(ev.0.get_title(), ev.1.get_title());
+            assert_eq!(ev.0.get_description(), ev.1.get_description());
+            assert_eq!(ev.0.get_start_date(), ev.1.get_start_date());
+            assert_eq!(ev.0.get_start_time(), ev.1.get_start_time());
+            assert_eq!(ev.0.get_duration(), ev.1.get_duration());
+        }
+    }
+
+    #[test]
     /// tests the event deletion method
     fn test_event_deletion() {
         let e = Event::default();
@@ -101,5 +162,30 @@ mod tests {
         assert!(cal.remove_event(rand::random()).is_err());
         assert!(cal.remove_event(eid).is_ok());
         assert!(cal.remove_event(eid).is_err());
+    }
+
+    #[test]
+    /// test week filter
+    fn test_week_filter() {
+        let dt = chrono::Local::now();
+        let mut cal = Calendar::new("test");
+        for offt in -365..365 {
+            let date_offt = dt
+                .date()
+                .checked_add_signed(chrono::Duration::days(offt))
+                .unwrap();
+            let e = event::Event::new(
+                "test",
+                "test",
+                &date_offt.to_string(),
+                &dt.time().format("%H:%M").to_string(),
+                1.0,
+            );
+            cal.add_event(e);
+        }
+
+        for ev in cal.list_events_week() {
+            assert_eq!(ev.get_start_date().iso_week(), dt.iso_week());
+        }
     }
 }
