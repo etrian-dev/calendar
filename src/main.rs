@@ -36,7 +36,7 @@ fn main() {
 
     let mut cal = read_calendar(Path::new("calendar.json"));
 
-    match &args.subcommand {
+    match args.subcommand {
         Commands::Add(x) => cli::handle_add(&mut cal, x),
         Commands::Remove(rm) => cli::handle_remove(&mut cal, rm),
         Commands::List(l) => cli::handle_list(&cal, l),

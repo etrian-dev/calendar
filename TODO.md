@@ -1,11 +1,13 @@
 # Calenda.rs
+## Event struct
+ - Add location string (also in ics parsing)
 ## Subcommands
  - [Add event](#add)
  - [Remove event](#remove)
  - [List events](#list)
 ## Add
  - [x] from cli parameters
- - [ ] from file (lookup iCalendar specification for .ics files)
+ - [x] **EXPERIMENTAL** from file (lookup iCalendar specification for .ics files)
 ## Remove
  - [x] Given event id, remove element
 ## List
