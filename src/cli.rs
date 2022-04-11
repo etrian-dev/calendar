@@ -101,44 +101,53 @@ fn ics_parse_date_time(
 pub fn handle_ics(fpath: &str) -> std::result::Result<Vec<Event>, String> {
     let path = path::Path::new(fpath);
     if path.exists() && path.extension().unwrap_or(&OsStr::new("ics")) == "ics" {
-        let mut ics_file = fs::File::open(path).expect("Cannot open file");
+        let ics_file = fs::File::open(path);
+        if let Err(e) = ics_file {
+            return Err(String::from(e.to_string()));
+        }
         let mut buf = String::new();
-        if let Err(e) = ics_file.read_to_string(&mut buf) {
+        if let Err(e) = ics_file.unwrap().read_to_string(&mut buf) {
             return Err(String::from(format!("Cannot read ics file: {}", e)));
         } else {
+            // File read into the buf String: parse it with the iCalendar library
             let str_unfolded = icalendar::parser::unfold(&buf);
             let cal = icalendar::parser::read_calendar(&str_unfolded)?;
             let mut events = Vec::new();
             for comp in cal.components {
-                let mut e = Event::default();
                 if comp.name == "VEVENT" {
+                    let mut e = Event::default();
                     for prop in comp.properties.iter() {
-                        if prop.name.as_str() == "SUMMARY" {
-                            e.set_title(prop.val.as_str());
-                        }
-                        if prop.name.as_str() == "DESCRIPTION" {
-                            e.set_description(prop.val.as_str());
-                        }
-                        if prop.name.as_str() == "DTSTART" {
-                            let (date, time) = ics_parse_date_time(&prop);
-                            e.set_start_date((date.day(), date.month(), date.year()));
-                            e.set_start_time((time.hour(), time.minute(), time.second()));
-                        }
-                        if prop.name.as_str() == "DTEND" {
-                            let (end_date, end_time) = ics_parse_date_time(&prop);
-                            let start_date = e.get_start_date();
-                            let start_time = e.get_start_time();
-                            let dur = end_date.and_time(end_time) - start_date.and_time(start_time);
-                            e.set_duration(&dur);
+                        match prop.name.as_str() {
+                            "SUMMARY" => e.set_title(prop.val.as_str()),
+                            "DESCRIPTION" => e.set_description(prop.val.as_str()),
+                            "DTSTART" => {
+                                let (date, time) = ics_parse_date_time(&prop);
+                                e.set_start_date((date.day(), date.month(), date.year()));
+                                e.set_start_time((time.hour(), time.minute(), time.second()));
+                            }
+                            "DTEND" => {
+                                let (end_date, end_time) = ics_parse_date_time(&prop);
+                                let start_date = e.get_start_date();
+                                let start_time = e.get_start_time();
+                                let dur =
+                                    end_date.and_time(end_time) - start_date.and_time(start_time);
+                                e.set_duration(&dur);
+                            }
+                            "LOCATION" => e.set_location(prop.val.as_str()),
+                            // property ignored by the event struct
+                            _ => (),
                         }
                     }
+                    events.push(e);
                 }
-                events.push(e);
             }
             return Ok(events);
         }
     }
-    Err(String::from("path does not exist"))
+    Err(String::from(format!(
+        "{} does not exists or is not an .ics file",
+        path.display()
+    )))
 }
 
 pub fn handle_add(cal: &mut Calendar, x: Add) -> () {
@@ -146,8 +155,8 @@ pub fn handle_add(cal: &mut Calendar, x: Add) -> () {
     if let Some(path) = x.from_file {
         match handle_ics(&path) {
             Ok(events) => {
+                println!("Imported {} events from {}", &events.len(), &path);
                 for ev in events {
-                    println!("{}", ev);
                     cal.add_event(ev);
                 }
             }

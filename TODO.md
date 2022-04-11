@@ -1,6 +1,8 @@
 # Calenda.rs
 ## Event struct
- - Add location string (also in ics parsing)
+ - [x] Add location string (also in ics parsing)
+ - [ ] fix integration tests in directory tests/
+ - [ ] better handling of serialization/deserialization of calendars
 ## Subcommands
  - [Add event](#add)
  - [Remove event](#remove)
@@ -16,3 +18,4 @@ Lists by default all events
  - [x] -w, --week filter
  - [x] -m,--month filter
  - [ ] --from %d/%m/%yyyy,--until %d/%m/%yyyy filters
+ - [ ] change default filter to --from-today

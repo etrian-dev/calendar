@@ -43,7 +43,7 @@ impl Event {
         dur: f32,
         location: Option<&str>,
     ) -> Event {
-        let date_formats = vec!["%d/%m/%Y"];
+        let date_formats = vec!["%d/%m/%Y", "%Y-%m-%d"];
         let mut date = Err(());
         for fmt in date_formats {
             if let Ok(val) = NaiveDate::parse_from_str(start_date, fmt) {
@@ -52,7 +52,7 @@ impl Event {
             } // else wrong format
         }
 
-        let time_formats = vec!["%H:%M"];
+        let time_formats = vec!["%H:%M", "%H:%M:%S"];
         let mut time = Err(());
         for fmt in time_formats {
             if let Ok(val) = NaiveTime::parse_from_str(start_time, fmt) {
@@ -131,7 +131,7 @@ impl Default for Event {
     fn default() -> Event {
         let now = Local::now();
         Event {
-            eid: 0,
+            eid: rand::random(),
             title: String::new(),
             description: String::new(),
             start_date: now.date().naive_local(),
@@ -179,27 +179,28 @@ impl PartialEq for Event {
 #[cfg(test)]
 mod tests {
     use crate::event::Event;
-    use chrono::{Datelike, Duration, Local, NaiveTime, TimeZone, Timelike};
+    use chrono::{Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Timelike};
 
     #[test]
     /// tests the new function
     fn test_event_new() {
         let t = String::from("Some title");
         let des = String::from("Some description");
-        let dt = Local.ymd(2022, 03, 31);
+        let dt = NaiveDate::from_ymd(2022, 7, 13);
         let tm = NaiveTime::from_hms(12, 23, 0);
-        let dur = Duration::hours(2);
+        let dur = 2.75;
         let loc = String::from("Some location");
 
-        let e1 = Event {
-            eid: rand::random(),
-            title: t.clone(),
-            description: des.clone(),
-            start_date: dt.naive_local(),
-            start_time: tm,
-            duration: dur,
-            location: loc.to_string(),
-        };
+        println!("{} {}", dt, tm);
+
+        let e1 = Event::new(
+            &t,
+            &des,
+            &dt.to_string(),
+            &tm.to_string(),
+            dur,
+            Some(loc.as_str()),
+        );
         let mut e2 = Event::default();
         assert_ne!(e1.title, e2.title);
         e2.set_title(&t);
@@ -210,11 +211,11 @@ mod tests {
         assert_ne!(e1.start_date, e2.start_date);
         e2.set_start_date((dt.day(), dt.month(), dt.year()));
         assert_eq!(e1.start_date, e2.start_date);
-        assert_ne!(e1.start_date, e2.start_date);
+        assert_ne!(e1.start_time, e2.start_time);
         e2.set_start_time((tm.hour(), tm.minute(), tm.second()));
         assert_eq!(e1.start_time, e2.start_time);
         assert_ne!(e1.duration, e2.duration);
-        e2.set_duration(&dur);
+        e2.set_duration(&Duration::hours(dur as i64));
         assert_eq!(e1.duration, e2.duration);
         assert_ne!(e1.location, e2.location);
         e2.set_location(loc.as_str());
