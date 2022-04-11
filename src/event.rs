@@ -31,6 +31,7 @@ pub struct Event {
     #[serde(serialize_with = "duration_to_min")]
     #[serde(deserialize_with = "min_to_duration")]
     duration: Duration,
+    location: String,
 }
 
 impl Event {
@@ -40,6 +41,7 @@ impl Event {
         start_date: &str,
         start_time: &str,
         dur: f32,
+        location: Option<&str>,
     ) -> Event {
         let date_formats = vec!["%d/%m/%Y"];
         let mut date = Err(());
@@ -74,6 +76,10 @@ impl Event {
                 Err(_) => Local::now().time(),
             },
             duration: d,
+            location: match location {
+                Some(loc) => String::from(loc),
+                None => String::from(""),
+            },
         }
     }
 
@@ -91,6 +97,9 @@ impl Event {
     }
     pub fn set_duration(&mut self, new_duration: &Duration) {
         self.duration = Duration::to_owned(new_duration);
+    }
+    pub fn set_location(&mut self, loc: &str) {
+        self.location = String::from(loc);
     }
 
     pub fn get_eid(&self) -> u64 {
@@ -112,6 +121,10 @@ impl Event {
     pub fn get_duration(&self) -> i64 {
         self.duration.num_seconds()
     }
+    /// Returns the location of this event, if any
+    pub fn get_location(&self) -> &str {
+        self.location.as_str()
+    }
 }
 
 impl Default for Event {
@@ -124,19 +137,31 @@ impl Default for Event {
             start_date: now.date().naive_local(),
             start_time: now.time(),
             duration: Duration::zero(),
+            location: String::from(""),
         }
     }
 }
 
 impl Display for Event {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let desc = self.get_description();
+        let idx = if desc.len().min(49) > 0 {
+            desc.len().min(49)
+        } else {
+            0
+        };
+        let mut loc = String::from(self.get_location());
+        if loc.len() > 0 {
+            loc = " @ ".to_owned() + &loc;
+        }
         write!(
             f,
-            "[{} - {}] {}: {}",
+            "[{} - {}] {}{}\n{}",
             self.get_start_date().format("%d/%m/%Y"),
             self.get_start_time().format("%H:%M"),
             self.get_title(),
-            String::from(self.get_description()) + ".."
+            &loc,
+            desc.get(0..idx).unwrap_or("Failed to get description")
         )
     }
 }
@@ -164,6 +189,8 @@ mod tests {
         let dt = Local.ymd(2022, 03, 31);
         let tm = NaiveTime::from_hms(12, 23, 0);
         let dur = Duration::hours(2);
+        let loc = String::from("Some location");
+
         let e1 = Event {
             eid: rand::random(),
             title: t.clone(),
@@ -171,17 +198,27 @@ mod tests {
             start_date: dt.naive_local(),
             start_time: tm,
             duration: dur,
+            location: loc.to_string(),
         };
         let mut e2 = Event::default();
+        assert_ne!(e1.title, e2.title);
         e2.set_title(&t);
         assert_eq!(e1.title, e2.title);
+        assert_ne!(e1.description, e2.description);
         e2.set_description(&des);
         assert_eq!(e1.description, e2.description);
+        assert_ne!(e1.start_date, e2.start_date);
         e2.set_start_date((dt.day(), dt.month(), dt.year()));
-        e2.set_start_time((tm.hour(), tm.minute(), tm.second()));
         assert_eq!(e1.start_date, e2.start_date);
+        assert_ne!(e1.start_date, e2.start_date);
+        e2.set_start_time((tm.hour(), tm.minute(), tm.second()));
+        assert_eq!(e1.start_time, e2.start_time);
+        assert_ne!(e1.duration, e2.duration);
         e2.set_duration(&dur);
         assert_eq!(e1.duration, e2.duration);
+        assert_ne!(e1.location, e2.location);
+        e2.set_location(loc.as_str());
+        assert_eq!(e1.location, e2.location);
     }
 
     #[test]
@@ -191,7 +228,7 @@ mod tests {
         let test_time = "16:10";
         let fmt_date = "%d/%m/%Y";
         let fmt_time = "%H:%M";
-        let dmy_hm = Event::new("test", "test", test_date, test_time, 1.0);
+        let dmy_hm = Event::new("test", "test", test_date, test_time, 1.0, None);
         assert_eq!(
             dmy_hm.get_start_date(),
             chrono::NaiveDate::parse_from_str(test_date, fmt_date).unwrap()

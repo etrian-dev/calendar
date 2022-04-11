@@ -126,13 +126,27 @@ mod tests {
         use std::iter::zip;
         // defines some events
         let v = vec![
-            Event::new("title1", "desc1", "11/02/2001", "-", 3.6),
-            Event::new("title2", "desc2", "08/09/2011", "-", 3.6),
-            Event::new("title3", "desc3", "11/02/2001", "-", 3.6),
-            Event::new("title4", "desc4", "13/04/1999", "-", 3.6),
-            Event::new("title5", "desc5", "21/01/2021", "-", 3.6),
-            Event::new("title6", "desc6", "13/03/2001", "-", 3.6),
-            Event::new("title7", "desc7", "12/12/2012", "-", 3.6),
+            Event::new("title1", "desc1", "11/02/2001", "-", 3.6, None),
+            Event::new(
+                "title2",
+                "desc2",
+                "08/09/2011",
+                "-",
+                3.6,
+                Some("Some location"),
+            ),
+            Event::new(
+                "title3",
+                "desc3",
+                "11/02/2001",
+                "-",
+                3.6,
+                Some("Random loc"),
+            ),
+            Event::new("title4", "desc4", "13/04/1999", "-", 3.6, None),
+            Event::new("title5", "desc5", "21/01/2021", "-", 3.6, None),
+            Event::new("title6", "desc6", "13/03/2001", "-", 3.6, None),
+            Event::new("title7", "desc7", "12/12/2012", "-", 3.6, Some("Pisa")),
         ];
 
         let mut cal = Calendar::new("test_multiple_cal");
@@ -180,6 +194,7 @@ mod tests {
                 &date_offt.to_string(),
                 &dt.time().format("%H:%M").to_string(),
                 1.0,
+                None,
             );
             cal.add_event(e);
         }

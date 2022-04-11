@@ -3,8 +3,7 @@ use std::io::Read;
 use std::{fs, path};
 
 use chrono::{Datelike, NaiveDateTime, Timelike};
-use clap::{Args, Parser, Subcommand};
-use icalendar::Property;
+use clap::{ArgGroup, Args, Parser, Subcommand};
 
 use crate::calendar::Calendar;
 use crate::event::Event;
@@ -41,18 +40,27 @@ pub enum Commands {
 }
 
 #[derive(Args)]
+#[clap(group(ArgGroup::new("input").multiple(true)))]
 pub struct Add {
+    #[clap(group = "input")]
     /// The event's title
     title: Option<String>,
+    #[clap(group = "input")]
     /// The event's description
     description: Option<String>,
+    #[clap(group = "input")]
     /// The event's start date. Supported formats: %d/%m/%yyyy
     start_date: Option<String>,
+    #[clap(group = "input")]
     /// The event's start time. Supported formats: %H:%M
     start_time: Option<String>,
+    #[clap(group = "input")]
     /// The event's duration, expressed in hours (floating point)
     duration: Option<String>,
-    #[clap(long)]
+    #[clap(group = "input")]
+    /// The event's location, as a string
+    location: Option<String>,
+    #[clap(long, group = "ics", conflicts_with = "input")]
     /// Load the event to be added from an .ics file (iCalendar format)
     from_file: Option<String>,
 }
@@ -169,7 +177,15 @@ pub fn handle_add(cal: &mut Calendar, x: Add) -> () {
         Some(val) => val.parse().unwrap(),
         None => default_values.get_duration() as f32,
     };
-    let ev = Event::new(&title, &description, &start_date, &start_time, duration);
+    let loc = x.location.as_deref();
+    let ev = Event::new(
+        &title,
+        &description,
+        &start_date,
+        &start_time,
+        duration,
+        loc,
+    );
     cal.add_event(ev)
 }
 
