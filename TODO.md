@@ -18,5 +18,5 @@ Lists by default all events
  - [x] -w, --week filter
  - [x] -m,--month filter
  - [x] --from %d/%m/%yyyy,--until %d/%m/%yyyy filters (they actually implement the identity filter)
- - [ ] change default filter to --from-today
+ - [x] change default filter to --from [current date]
  - [ ] provide generic, user-definable filter

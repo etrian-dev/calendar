@@ -206,6 +206,16 @@ pub fn handle_list(cal: &Calendar, x: Filter) -> bool {
         Filter { week: true, .. } => cal.list_events_week(),
         Filter { month: true, .. } => cal.list_events_month(),
         Filter {
+            today: false,
+            week: false,
+            month: false,
+            from: None,
+            until: None,
+        } => {
+            let today = format!("{}", chrono::Local::today().format("%d/%m/%Y"));
+            cal.list_events_between(Some(today), None)
+        }
+        Filter {
             from: x, until: y, ..
         } => cal.list_events_between(x, y),
     };
