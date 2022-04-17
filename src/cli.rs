@@ -1,5 +1,7 @@
 use std::ffi::OsStr;
+//use std::fmt::Result;
 use std::io::Read;
+use std::result::Result;
 use std::{fs, path};
 
 use chrono::{Datelike, NaiveDateTime, Timelike};
@@ -98,7 +100,7 @@ fn ics_parse_date_time(
     (dt.date(), dt.time())
 }
 
-pub fn handle_ics(fpath: &str) -> std::result::Result<Vec<Event>, String> {
+pub fn handle_ics(fpath: &str) -> Result<Vec<Event>, String> {
     let path = path::Path::new(fpath);
     if path.exists() && path.extension().unwrap_or(&OsStr::new("ics")) == "ics" {
         let ics_file = fs::File::open(path);
@@ -150,7 +152,7 @@ pub fn handle_ics(fpath: &str) -> std::result::Result<Vec<Event>, String> {
     )))
 }
 
-pub fn handle_add(cal: &mut Calendar, x: Add) -> () {
+pub fn handle_add(cal: &mut Calendar, x: Add) -> bool {
     // if the flag --from-file is given it takes precedence
     if let Some(path) = x.from_file {
         match handle_ics(&path) {
@@ -160,9 +162,9 @@ pub fn handle_add(cal: &mut Calendar, x: Add) -> () {
                     cal.add_event(ev);
                 }
             }
-            Err(e) => eprintln!("Failed parsing .ics file: {}", e),
+            Err(e) => println!("Failed parsing .ics file: {}", e),
         }
-        return;
+        return false;
     }
 
     let default_values = Event::default();
@@ -198,22 +200,30 @@ pub fn handle_add(cal: &mut Calendar, x: Add) -> () {
     cal.add_event(ev)
 }
 
-pub fn handle_list(cal: &Calendar, x: Filter) -> () {
+pub fn handle_list(cal: &Calendar, x: Filter) -> bool {
     let events = match x {
         Filter { today: true, .. } => cal.list_events_today(),
         Filter { week: true, .. } => cal.list_events_week(),
         Filter { month: true, .. } => cal.list_events_month(),
-        _ => cal.list_events(),
+        Filter {
+            from: x, until: y, ..
+        } => cal.list_events_between(x, y),
     };
-    println!("{}", cal);
     for ev in events {
         println!("{}", ev);
     }
+    true
 }
 
-pub fn handle_remove(cal: &mut Calendar, x: Remove) -> () {
+pub fn handle_remove(cal: &mut Calendar, x: Remove) -> bool {
     match cal.remove_event(x.eid) {
-        Ok(ev) => println!("Event {:?} removed successfully", ev),
-        Err(e) => println!("Error: {}", e),
+        Ok(eid) => {
+            println!("Event {eid} deleted successfully");
+            true
+        }
+        Err(e) => {
+            println!("Failed to delete event: {e}");
+            false
+        }
     }
 }

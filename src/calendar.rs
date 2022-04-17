@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Display};
 
-use chrono::{Datelike, Local};
+use chrono::{Datelike, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 
 use crate::calendar_error::CalendarError;
@@ -20,8 +20,12 @@ impl Calendar {
         }
     }
 
-    pub fn add_event(&mut self, ev: Event) {
+    pub fn add_event(&mut self, ev: Event) -> bool {
+        if self.events.contains(&ev) {
+            return false;
+        }
         self.events.push(ev);
+        true
     }
 
     pub fn remove_event(&mut self, eid: u64) -> Result<Event, CalendarError> {
@@ -35,13 +39,6 @@ impl Calendar {
         Err(CalendarError::EventNotFound(eid))
     }
 
-    pub fn list_events(&self) -> Vec<&Event> {
-        let mut v = Vec::new();
-        for ev in &self.events {
-            v.push(ev);
-        }
-        v
-    }
     pub fn list_events_today(&self) -> Vec<&Event> {
         let mut events_today = Vec::new();
         // get current date
@@ -80,6 +77,25 @@ impl Calendar {
             }
         }
         events_month
+    }
+
+    pub fn list_events_between(&self, from: Option<String>, until: Option<String>) -> Vec<&Event> {
+        let from_date = match from {
+            Some(s) => NaiveDate::parse_from_str(&s, "%d/%m/%Y").unwrap_or(chrono::naive::MIN_DATE),
+            None => chrono::naive::MIN_DATE,
+        };
+        let until_date = match until {
+            Some(s) => NaiveDate::parse_from_str(&s, "%d/%m/%Y").unwrap_or(chrono::naive::MAX_DATE),
+            None => chrono::naive::MAX_DATE,
+        };
+
+        let mut events_between = Vec::new();
+        for ev in &self.events {
+            if ev.get_start_date() <= until_date && ev.get_start_date() >= from_date {
+                events_between.push(ev);
+            }
+        }
+        events_between
     }
 }
 
@@ -154,7 +170,8 @@ mod tests {
             cal.add_event(ev);
         }
 
-        for ev in zip(cal.list_events(), &v) {
+        // The identity filter is just implemented with None args in the method call below
+        for ev in zip(cal.list_events_between(None, None), &v) {
             assert_eq!(ev.0.get_eid(), ev.1.get_eid());
             assert_eq!(ev.0.get_title(), ev.1.get_title());
             assert_eq!(ev.0.get_description(), ev.1.get_description());
