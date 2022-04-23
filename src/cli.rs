@@ -1,5 +1,4 @@
 use std::ffi::OsStr;
-//use std::fmt::Result;
 use std::io::Read;
 use std::result::Result;
 use std::{fs, path};
@@ -16,13 +15,16 @@ use crate::event::Event;
 pub struct Cli {
     /// Specifies a subcommand
     #[clap(subcommand)]
-    pub subcommand: Commands,
+    pub subcommand: Option<Commands>,
+    /// View this calendar (if it exists)
+    #[clap(short, long)]
+    pub view: Option<String>,
     /// Create a calendar
     #[clap(short, long)]
-    create: Option<String>,
+    pub create: Option<String>,
     /// Delete a calendar
     #[clap(short, long)]
-    delete: Option<String>,
+    pub delete: Option<String>,
 }
 
 impl Cli {
@@ -157,14 +159,22 @@ pub fn handle_add(cal: &mut Calendar, x: Add) -> bool {
     if let Some(path) = x.from_file {
         match handle_ics(&path) {
             Ok(events) => {
-                println!("Imported {} events from {}", &events.len(), &path);
+                let mut imported: usize = 0;
+                let total_events = events.len();
                 for ev in events {
-                    cal.add_event(ev);
+                    if cal.add_event(ev) {
+                        imported += 1;
+                    }
                 }
+                println!(
+                    "Imported {} (total: {}) events from {}",
+                    imported, total_events, &path
+                );
             }
             Err(e) => println!("Failed parsing .ics file: {}", e),
         }
-        return false;
+        // whether events were succeddfully parsed or not, return true to write changes
+        return true;
     }
 
     let default_values = Event::default();

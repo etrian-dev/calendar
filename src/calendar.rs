@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
+use std::hash::{Hash, Hasher};
 
 use chrono::{Datelike, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
@@ -9,41 +11,47 @@ use crate::event::Event;
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Calendar {
     name: String,
-    events: Vec<Event>,
+    events: HashMap<u64, Event>,
 }
 
 impl Calendar {
     pub fn new(calendar_name: &str) -> Calendar {
         Calendar {
             name: String::from(calendar_name),
-            events: Vec::new(),
+            events: HashMap::new(),
         }
+    }
+
+    pub fn get_name(&self) -> &str {
+        &self.name
     }
 
     pub fn add_event(&mut self, ev: Event) -> bool {
-        if self.events.contains(&ev) {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        ev.hash(&mut h);
+        let ev_hash = h.finish();
+        dbg!(ev_hash);
+        dbg!(self.events.keys());
+        if self.events.contains_key(&ev_hash) {
             return false;
         }
-        self.events.push(ev);
+        self.events.insert(ev_hash, ev);
         true
     }
 
+    /// Removes an event, given its hash
     pub fn remove_event(&mut self, eid: u64) -> Result<Event, CalendarError> {
-        let mut idx: usize = 0;
-        for ev in &self.events {
-            if ev.get_eid() == eid {
-                return Ok(self.events.swap_remove(idx));
-            }
-            idx += 1;
+        match self.events.remove(&eid) {
+            Some(event) => Ok(event),
+            None => Err(CalendarError::EventNotFound(eid)),
         }
-        Err(CalendarError::EventNotFound(eid))
     }
 
     pub fn list_events_today(&self) -> Vec<&Event> {
         let mut events_today = Vec::new();
         // get current date
         let curr_date = Local::today().naive_local();
-        for ev in &self.events {
+        for ev in self.events.values() {
             if curr_date == ev.get_start_date() {
                 events_today.push(ev);
             }
@@ -55,7 +63,7 @@ impl Calendar {
         // get current date
         let week = Local::today();
 
-        for ev in &self.events {
+        for ev in self.events.values() {
             if ev.get_start_date().iso_week() == week.iso_week() {
                 events_week.push(ev);
             }
@@ -70,7 +78,7 @@ impl Calendar {
         let curr_month = dt.month();
         let curr_year = dt.year();
 
-        for ev in &self.events {
+        for ev in self.events.values() {
             if ev.get_start_date().month() == curr_month && ev.get_start_date().year() == curr_year
             {
                 events_month.push(ev);
@@ -90,7 +98,7 @@ impl Calendar {
         };
 
         let mut events_between = Vec::new();
-        for ev in &self.events {
+        for ev in self.events.values() {
             if ev.get_start_date() <= until_date && ev.get_start_date() >= from_date {
                 events_between.push(ev);
             }
@@ -113,21 +121,31 @@ impl Display for Calendar {
 #[cfg(test)]
 mod tests {
     use chrono::Datelike;
+    use std::collections::HashMap;
+    use std::hash::{Hash, Hasher};
 
     use crate::calendar::Calendar;
     use crate::event::{self, Event};
+
+    fn get_hash(e: &Event) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        e.hash(&mut h);
+        h.finish()
+    }
 
     #[test]
     /// tests the event addition method
     fn test_event_addition() {
         let e1 = Event::default();
         let mut e2 = Event::default();
+        let e1_hash = get_hash(&e1);
+        let e2_hash = get_hash(&e2);
         e2.set_title("New title");
 
         let mut empty_cal = Calendar::new("test");
         let full_cal = Calendar {
             name: String::from("test"),
-            events: vec![e1.clone(), e2.clone()],
+            events: HashMap::from([(e1_hash, e1.clone()), (e2_hash, e2.clone())]),
         };
 
         empty_cal.add_event(e1);
@@ -172,12 +190,7 @@ mod tests {
 
         // The identity filter is just implemented with None args in the method call below
         for ev in zip(cal.list_events_between(None, None), &v) {
-            assert_eq!(ev.0.get_eid(), ev.1.get_eid());
-            assert_eq!(ev.0.get_title(), ev.1.get_title());
-            assert_eq!(ev.0.get_description(), ev.1.get_description());
-            assert_eq!(ev.0.get_start_date(), ev.1.get_start_date());
-            assert_eq!(ev.0.get_start_time(), ev.1.get_start_time());
-            assert_eq!(ev.0.get_duration(), ev.1.get_duration());
+            assert_eq!(ev.0, ev.1);
         }
     }
 
@@ -185,7 +198,7 @@ mod tests {
     /// tests the event deletion method
     fn test_event_deletion() {
         let e = Event::default();
-        let eid = e.get_eid();
+        let eid = get_hash(&e);
 
         let mut cal = Calendar::new("test");
         cal.add_event(e);

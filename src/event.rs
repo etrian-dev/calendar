@@ -1,7 +1,10 @@
 use chrono::{Duration, Local, NaiveDate, NaiveTime};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::Display;
+use std::hash::Hash;
 use std::vec;
+
+use log::warn;
 
 fn duration_to_min<S>(dur: &Duration, ser: S) -> Result<S::Ok, S::Error>
 where
@@ -21,9 +24,8 @@ where
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct Event {
-    eid: u64,
     title: String,
     description: String,
     start_date: NaiveDate,
@@ -49,7 +51,7 @@ impl Event {
             if let Ok(val) = NaiveDate::parse_from_str(start_date, fmt) {
                 date = Ok(val);
                 break;
-            } // else wrong format
+            }
         }
 
         let time_formats = vec!["%H:%M", "%H:%M:%S"];
@@ -58,22 +60,33 @@ impl Event {
             if let Ok(val) = NaiveTime::parse_from_str(start_time, fmt) {
                 time = Ok(val);
                 break;
-            } // else wrong format
+            }
         }
 
         let d = Duration::hours((dur as i32).into());
         Event {
             // add a unique, random, event id
-            eid: rand::random(),
             title: event_title.to_string(),
             description: descr.to_string(),
             start_date: match date {
                 Ok(date) => date,
-                Err(_) => Local::now().date().naive_local(),
+                Err(_) => {
+                    warn!(
+                        "Unrecognized date format {}: defaults to current date",
+                        start_date
+                    );
+                    Local::now().date().naive_local()
+                }
             },
             start_time: match time {
                 Ok(tm) => tm,
-                Err(_) => Local::now().time(),
+                Err(_) => {
+                    warn!(
+                        "Unrecognized time format {}: defaults to current time",
+                        start_time
+                    );
+                    Local::now().time()
+                }
             },
             duration: d,
             location: match location {
@@ -102,9 +115,6 @@ impl Event {
         self.location = String::from(loc);
     }
 
-    pub fn get_eid(&self) -> u64 {
-        self.eid
-    }
     pub fn get_title(&self) -> &str {
         self.title.as_str()
     }
@@ -131,7 +141,6 @@ impl Default for Event {
     fn default() -> Event {
         let now = Local::now();
         Event {
-            eid: rand::random(),
             title: String::new(),
             description: String::new(),
             start_date: now.date().naive_local(),
@@ -163,16 +172,6 @@ impl Display for Event {
             &loc,
             desc.get(0..idx).unwrap_or("Failed to get description")
         )
-    }
-}
-
-impl PartialEq for Event {
-    fn eq(&self, other: &Event) -> bool {
-        self.eid == other.eid
-    }
-
-    fn ne(&self, other: &Event) -> bool {
-        !self.eq(other)
     }
 }
 
