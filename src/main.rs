@@ -43,7 +43,8 @@ fn create_cal(calname: &str, p: &Path) -> Result<Calendar, CalendarError> {
             return Err(CalendarError::CalendarAlreadyExists(calname.to_string()));
         }
     }
-    Ok(Calendar::new(calname))
+    // FIXME: currently setting the owner is unsupported
+    Ok(Calendar::new("", calname))
 }
 
 fn delete_cal(calname: &str, p: &Path) -> bool {
@@ -84,7 +85,7 @@ fn main() {
                 Err(CalendarError::CalendarNotFound(s))
             }
         }
-        _ => Ok(Calendar::new("calendar.json")),
+        _ => Ok(Calendar::new("default", "calendar")),
     };
     if let Err(e) = res {
         eprintln!("{:?}", e);

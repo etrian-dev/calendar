@@ -10,10 +10,13 @@ use crate::event::{Cadence, Event, Recurrence};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Calendar {
+    owner: String,
     name: String,
     events: HashMap<u64, Event>,
 }
 
+/// Given a recurrence and starting date and time, computes the dates and times
+/// of the recurrences of the event and returns them as a vector
 fn expand_recurrence(
     rec: &Recurrence,
     dt: &NaiveDate,
@@ -49,15 +52,28 @@ fn expand_recurrence(
 }
 
 impl Calendar {
-    pub fn new(calendar_name: &str) -> Calendar {
+    pub fn new(owner_name: &str, calendar_name: &str) -> Calendar {
         Calendar {
+            owner: String::from(owner_name),
             name: String::from(calendar_name),
             events: HashMap::new(),
         }
     }
 
+    pub fn get_owner(&self) -> &str {
+        &self.owner
+    }
+
     pub fn get_name(&self) -> &str {
         &self.name
+    }
+
+    pub fn set_owner(&mut self, s: &str) {
+        self.owner = String::from(s);
+    }
+
+    pub fn set_name(&mut self, s: &str) {
+        self.name = String::from(s);
     }
 
     pub fn add_event(&mut self, ev: Event) -> bool {
@@ -111,7 +127,20 @@ impl Calendar {
         let week = Local::today();
 
         for ev in self.events.values() {
-            if ev.get_start_date().iso_week() == week.iso_week() {
+            // If the event is recurrent then expand its recurrent dates
+            // if any of those is equal to the current then add the modified event to output vec
+            if let Some(rec) = ev.get_recurrence() {
+                for rec_dt in expand_recurrence(rec, &ev.get_start_date(), &ev.get_start_time()) {
+                    if rec_dt.0.iso_week() == week.iso_week() {
+                        // Since cloning is expensive it is done only on recurrences that should appear
+                        // in the output vector
+                        let mut ev2 = ev.clone();
+                        ev2.set_start_date((rec_dt.0.day(), rec_dt.0.month(), rec_dt.0.year()));
+                        ev2.set_start_time((rec_dt.1.hour(), rec_dt.1.minute(), rec_dt.1.second()));
+                        events_week.push(ev2);
+                    }
+                }
+            } else if ev.get_start_date().iso_week() == week.iso_week() {
                 events_week.push(ev.clone());
             }
         }
@@ -134,7 +163,21 @@ impl Calendar {
         let curr_year = dt.year();
 
         for ev in self.events.values() {
-            if ev.get_start_date().month() == curr_month && ev.get_start_date().year() == curr_year
+            // If the event is recurrent then expand its recurrent dates
+            // if any of those is equal to the current then add the modified event to output vec
+            if let Some(rec) = ev.get_recurrence() {
+                for rec_dt in expand_recurrence(rec, &ev.get_start_date(), &ev.get_start_time()) {
+                    if rec_dt.0.month() == curr_month && rec_dt.0.year() == curr_year {
+                        // Since cloning is expensive it is done only on recurrences that should appear
+                        // in the output vector
+                        let mut ev2 = ev.clone();
+                        ev2.set_start_date((rec_dt.0.day(), rec_dt.0.month(), rec_dt.0.year()));
+                        ev2.set_start_time((rec_dt.1.hour(), rec_dt.1.minute(), rec_dt.1.second()));
+                        events_month.push(ev2);
+                    }
+                }
+            } else if ev.get_start_date().month() == curr_month
+                && ev.get_start_date().year() == curr_year
             {
                 events_month.push(ev.clone());
             }
@@ -162,7 +205,20 @@ impl Calendar {
 
         let mut events_between = Vec::new();
         for ev in self.events.values() {
-            if ev.get_start_date() <= until_date && ev.get_start_date() >= from_date {
+            // If the event is recurrent then expand its recurrent dates
+            // if any of those is equal to the current then add the modified event to output vec
+            if let Some(rec) = ev.get_recurrence() {
+                for rec_dt in expand_recurrence(rec, &ev.get_start_date(), &ev.get_start_time()) {
+                    if rec_dt.0 <= until_date && rec_dt.0 >= from_date {
+                        // Since cloning is expensive it is done only on recurrences that should appear
+                        // in the output vector
+                        let mut ev2 = ev.clone();
+                        ev2.set_start_date((rec_dt.0.day(), rec_dt.0.month(), rec_dt.0.year()));
+                        ev2.set_start_time((rec_dt.1.hour(), rec_dt.1.minute(), rec_dt.1.second()));
+                        events_between.push(ev2);
+                    }
+                }
+            } else if ev.get_start_date() <= until_date && ev.get_start_date() >= from_date {
                 events_between.push(ev.clone());
             }
         }
@@ -180,11 +236,21 @@ impl Calendar {
 
 impl Display for Calendar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut tot_events = 0;
+        for ev in self.events.values() {
+            if let Some(rec) = ev.get_recurrence() {
+                tot_events += rec.repetitions() + 1;
+            } else {
+                tot_events += 1;
+            }
+        }
         write!(
             f,
-            "--- Calendar: {} ---\n# events: {}",
+            "--- Calendar {} ({}) ---\ntotal events: {}\n{}",
             self.name,
-            self.events.len()
+            self.owner,
+            tot_events,
+            Local::now().format("%A %d/%m/%Y - %H:%M")
         )
     }
 }
@@ -212,8 +278,9 @@ mod tests {
         let e1_hash = get_hash(&e1);
         let e2_hash = get_hash(&e2);
 
-        let mut empty_cal = Calendar::new("test");
+        let mut empty_cal = Calendar::new("owner", "test");
         let full_cal = Calendar {
+            owner: String::from("owner"),
             name: String::from("test"),
             events: HashMap::from([(e1_hash, e1.clone()), (e2_hash, e2.clone())]),
         };
@@ -262,7 +329,7 @@ mod tests {
             ),
         ];
 
-        let mut cal = Calendar::new("test_multiple_cal");
+        let mut cal = Calendar::new("owner", "test_multiple_cal");
         assert_eq!(cal.events.len(), 0);
         for ev in v.clone() {
             cal.add_event(ev);
@@ -281,7 +348,7 @@ mod tests {
         let e = Event::default();
         let eid = get_hash(&e);
 
-        let mut cal = Calendar::new("test");
+        let mut cal = Calendar::new("owner", "test");
         cal.add_event(e);
 
         assert!(cal.remove_event(rand::random()).is_err());
@@ -293,7 +360,7 @@ mod tests {
     /// test week filter
     fn test_week_filter() {
         let dt = chrono::Local::now();
-        let mut cal = Calendar::new("test");
+        let mut cal = Calendar::new("owner", "test");
         for offt in -365..365 {
             let date_offt = dt
                 .date()
@@ -319,7 +386,7 @@ mod tests {
     #[test]
     /// tests that duplicate events (events with the same hash) are not added
     fn test_duplicate_add() {
-        let mut cal = Calendar::new("test");
+        let mut cal = Calendar::new("owner", "test");
         let ev = Event::new(
             "title",
             "description",

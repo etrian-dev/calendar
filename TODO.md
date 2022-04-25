@@ -2,9 +2,9 @@
 ## Features
  - [ ] detect and warn the user when adding overlapping events
  - [ ] shell mode as a binary
- - [ ] calendar owner
+ - [ ] calendar owner (at creation and editing w/ flags)
 ## Event struct
- - [ ] Add support for recurrent events
+ - [x] Add support for recurrent events
  - [x] Add location string (also in ics parsing)
  - [ ] fix integration tests in directory tests/
  - [ ] better handling of serialization/deserialization of calendars
