@@ -4,6 +4,7 @@ mod cli;
 mod event;
 
 use calendar_error::CalendarError;
+use log::warn;
 
 use crate::calendar::Calendar;
 use crate::cli::{Cli, Commands};
@@ -100,10 +101,12 @@ fn main() {
         None => true, // no commands to perform => ok to save result
     };
 
-    if result {
-        write_calendar(
+    if result
+        && !write_calendar(
             &cal,
             &data_dir.join(Path::new(cal.get_name()).with_extension("json")),
-        );
+        )
+    {
+        warn!("Cannot write calendar {} to {}", cal, data_dir.display());
     }
 }

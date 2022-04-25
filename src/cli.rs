@@ -105,6 +105,42 @@ fn ics_parse_date_time(
     (dt.date(), dt.time())
 }
 
+fn match_property(ev: &mut Event, comp: icalendar::parser::Component) {
+    for prop in comp.properties.iter() {
+        match prop.name.as_str() {
+            "SUMMARY" => ev.set_title(prop.val.as_str()),
+            "DESCRIPTION" => ev.set_description(prop.val.as_str()),
+            "DTSTART" => {
+                let (date, time) = ics_parse_date_time(prop);
+                ev.set_start_date((date.day(), date.month(), date.year()));
+                ev.set_start_time((time.hour(), time.minute(), time.second()));
+            }
+            "DTEND" => {
+                let (end_date, end_time) = ics_parse_date_time(prop);
+                let start_date = ev.get_start_date();
+                let start_time = ev.get_start_time();
+                let dur = end_date.and_time(end_time) - start_date.and_time(start_time);
+                ev.set_duration(&dur);
+            }
+            "LOCATION" => ev.set_location(prop.val.as_str()),
+            "RRULE" => {
+                let mut rec = String::new();
+                for param in prop.val.as_str().split(';') {
+                    let x: Vec<&str> = param.splitn(2, '=').collect();
+                    match x[0] {
+                        "FREQ" => rec = x[1].to_owned() + " " + &rec,
+                        "COUNT" => rec.push_str(x[1]),
+                        _ => (),
+                    }
+                }
+                ev.set_recurrence(&rec)
+            }
+            // property ignored by the event struct
+            _ => (),
+        }
+    }
+}
+
 fn handle_ics(fpath: &str) -> Result<Vec<Event>, String> {
     let path = path::Path::new(fpath);
     if path.exists() && path.extension().unwrap_or(OsStr::new("ics")) == "ics" {
@@ -123,28 +159,7 @@ fn handle_ics(fpath: &str) -> Result<Vec<Event>, String> {
             for comp in cal.components {
                 if comp.name == "VEVENT" {
                     let mut e = Event::default();
-                    for prop in comp.properties.iter() {
-                        match prop.name.as_str() {
-                            "SUMMARY" => e.set_title(prop.val.as_str()),
-                            "DESCRIPTION" => e.set_description(prop.val.as_str()),
-                            "DTSTART" => {
-                                let (date, time) = ics_parse_date_time(prop);
-                                e.set_start_date((date.day(), date.month(), date.year()));
-                                e.set_start_time((time.hour(), time.minute(), time.second()));
-                            }
-                            "DTEND" => {
-                                let (end_date, end_time) = ics_parse_date_time(prop);
-                                let start_date = e.get_start_date();
-                                let start_time = e.get_start_time();
-                                let dur =
-                                    end_date.and_time(end_time) - start_date.and_time(start_time);
-                                e.set_duration(&dur);
-                            }
-                            "LOCATION" => e.set_location(prop.val.as_str()),
-                            // property ignored by the event struct
-                            _ => (),
-                        }
-                    }
+                    match_property(&mut e, comp);
                     events.push(e);
                 }
             }
