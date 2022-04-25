@@ -64,6 +64,9 @@ pub struct Add {
     #[clap(group = "input")]
     /// The event's location, as a string
     location: Option<String>,
+    #[clap(group = "input")]
+    /// The event's recurrence
+    recurrence: Option<String>,
     #[clap(long, group = "ics", conflicts_with = "input")]
     /// Load the event to be added from an .ics file (iCalendar format)
     from_file: Option<String>,
@@ -102,16 +105,16 @@ fn ics_parse_date_time(
     (dt.date(), dt.time())
 }
 
-pub fn handle_ics(fpath: &str) -> Result<Vec<Event>, String> {
+fn handle_ics(fpath: &str) -> Result<Vec<Event>, String> {
     let path = path::Path::new(fpath);
-    if path.exists() && path.extension().unwrap_or(&OsStr::new("ics")) == "ics" {
+    if path.exists() && path.extension().unwrap_or(OsStr::new("ics")) == "ics" {
         let ics_file = fs::File::open(path);
         if let Err(e) = ics_file {
-            return Err(String::from(e.to_string()));
+            return Err(e.to_string());
         }
         let mut buf = String::new();
         if let Err(e) = ics_file.unwrap().read_to_string(&mut buf) {
-            return Err(String::from(format!("Cannot read ics file: {}", e)));
+            return Err(format!("Cannot read ics file: {}", e));
         } else {
             // File read into the buf String: parse it with the iCalendar library
             let str_unfolded = icalendar::parser::unfold(&buf);
@@ -125,12 +128,12 @@ pub fn handle_ics(fpath: &str) -> Result<Vec<Event>, String> {
                             "SUMMARY" => e.set_title(prop.val.as_str()),
                             "DESCRIPTION" => e.set_description(prop.val.as_str()),
                             "DTSTART" => {
-                                let (date, time) = ics_parse_date_time(&prop);
+                                let (date, time) = ics_parse_date_time(prop);
                                 e.set_start_date((date.day(), date.month(), date.year()));
                                 e.set_start_time((time.hour(), time.minute(), time.second()));
                             }
                             "DTEND" => {
-                                let (end_date, end_time) = ics_parse_date_time(&prop);
+                                let (end_date, end_time) = ics_parse_date_time(prop);
                                 let start_date = e.get_start_date();
                                 let start_time = e.get_start_time();
                                 let dur =
@@ -148,10 +151,10 @@ pub fn handle_ics(fpath: &str) -> Result<Vec<Event>, String> {
             return Ok(events);
         }
     }
-    Err(String::from(format!(
+    Err(format!(
         "{} does not exists or is not an .ics file",
         path.display()
-    )))
+    ))
 }
 
 pub fn handle_add(cal: &mut Calendar, x: Add) -> bool {
@@ -199,6 +202,8 @@ pub fn handle_add(cal: &mut Calendar, x: Add) -> bool {
         None => default_values.get_duration() as f32,
     };
     let loc = x.location.as_deref();
+    let rec = x.recurrence.as_deref();
+
     let ev = Event::new(
         &title,
         &description,
@@ -206,6 +211,7 @@ pub fn handle_add(cal: &mut Calendar, x: Add) -> bool {
         &start_time,
         duration,
         loc,
+        rec,
     );
     cal.add_event(ev)
 }
@@ -229,6 +235,7 @@ pub fn handle_list(cal: &Calendar, x: Filter) -> bool {
             from: x, until: y, ..
         } => cal.list_events_between(x, y),
     };
+    println!("{}", cal);
     for ev in events {
         println!("{}", ev);
     }
@@ -237,12 +244,12 @@ pub fn handle_list(cal: &Calendar, x: Filter) -> bool {
 
 pub fn handle_remove(cal: &mut Calendar, x: Remove) -> bool {
     match cal.remove_event(x.eid) {
-        Ok(eid) => {
-            println!("Event {eid} deleted successfully");
+        Ok(ev) => {
+            println!("Event \n{ev}\nremoved successfully");
             true
         }
         Err(e) => {
-            println!("Failed to delete event: {e}");
+            println!("Failed to remove event {}: {e}", x.eid);
             false
         }
     }

@@ -1,10 +1,64 @@
 use chrono::{Duration, Local, NaiveDate, NaiveTime};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::fmt::Display;
-use std::hash::Hash;
+use std::fmt::Result as fmtResult;
+use std::fmt::{Debug, Display};
+use std::hash::{Hash, Hasher};
+use std::result::Result;
+use std::str::FromStr;
 use std::vec;
 
 use log::warn;
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+pub enum Cadence {
+    Hourly,
+    Daily,
+    Weekly,
+    Monthly,
+    Yearly,
+}
+
+pub enum ParseCadenceError {
+    Unrecognized(String),
+}
+impl Display for ParseCadenceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmtResult {
+        match self {
+            ParseCadenceError::Unrecognized(s) => write!(f, "{} cannot be parsed as a Cadence", s),
+        }
+    }
+}
+
+impl FromStr for Cadence {
+    type Err = ParseCadenceError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "hourly" => Ok(Cadence::Hourly),
+            "daily" => Ok(Cadence::Daily),
+            "weekly" => Ok(Cadence::Weekly),
+            "monthly" => Ok(Cadence::Monthly),
+            "yearly" => Ok(Cadence::Yearly),
+            _ => Err(ParseCadenceError::Unrecognized(s.to_string())),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+pub struct Recurrence {
+    cadence: Cadence,
+    repetitions: usize,
+}
+
+impl Recurrence {
+    pub fn cadence(&self) -> &Cadence {
+        &self.cadence
+    }
+
+    pub fn repetitions(&self) -> usize {
+        self.repetitions
+    }
+}
 
 fn duration_to_min<S>(dur: &Duration, ser: S) -> Result<S::Ok, S::Error>
 where
@@ -24,6 +78,29 @@ where
     }
 }
 
+fn parse_recurrence(s: &str) -> Option<Recurrence> {
+    let components: Vec<&str> = s.split_ascii_whitespace().collect();
+    if components.len() != 2 {
+        return None;
+    }
+    match (
+        Cadence::from_str(components[0]),
+        components[1].parse::<usize>(),
+    ) {
+        (Ok(c), Ok(n)) => {
+            if n == 0 {
+                None
+            } else {
+                Some(Recurrence {
+                    cadence: c,
+                    repetitions: n,
+                })
+            }
+        }
+        (_, _) => None,
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct Event {
     title: String,
@@ -34,6 +111,7 @@ pub struct Event {
     #[serde(deserialize_with = "min_to_duration")]
     duration: Duration,
     location: String,
+    recurrence: Option<Recurrence>,
 }
 
 impl Event {
@@ -44,6 +122,7 @@ impl Event {
         start_time: &str,
         dur: f32,
         location: Option<&str>,
+        recurr: Option<&str>,
     ) -> Event {
         let date_formats = vec!["%d/%m/%Y", "%Y-%m-%d"];
         let mut date = Err(());
@@ -93,6 +172,10 @@ impl Event {
                 Some(loc) => String::from(loc),
                 None => String::from(""),
             },
+            recurrence: match recurr {
+                Some(val) => parse_recurrence(val),
+                None => None,
+            },
         }
     }
 
@@ -115,6 +198,10 @@ impl Event {
         self.location = String::from(loc);
     }
 
+    pub fn set_recurrence(&mut self, rec: &str) {
+        self.recurrence = parse_recurrence(rec);
+    }
+
     pub fn get_title(&self) -> &str {
         self.title.as_str()
     }
@@ -135,6 +222,11 @@ impl Event {
     pub fn get_location(&self) -> &str {
         self.location.as_str()
     }
+
+    /// Returns the recurrence of this event, if any
+    pub fn get_recurrence(&self) -> Option<&Recurrence> {
+        self.recurrence.as_ref()
+    }
 }
 
 impl Default for Event {
@@ -147,12 +239,17 @@ impl Default for Event {
             start_time: now.time(),
             duration: Duration::zero(),
             location: String::from(""),
+            recurrence: None,
         }
     }
 }
 
 impl Display for Event {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.hash(&mut h);
+        let hashval = h.finish();
+
         let desc = self.get_description();
         let idx = if desc.len().min(49) > 0 {
             desc.len().min(49)
@@ -160,12 +257,13 @@ impl Display for Event {
             0
         };
         let mut loc = String::from(self.get_location());
-        if loc.len() > 0 {
+        if !loc.is_empty() {
             loc = " @ ".to_owned() + &loc;
         }
         write!(
             f,
-            "[{} - {}] {}{}\n{}",
+            "[eid = {}]\n[{} - {}] {}{}\n{}",
+            hashval,
             self.get_start_date().format("%d/%m/%Y"),
             self.get_start_time().format("%H:%M"),
             self.get_title(),
@@ -177,8 +275,8 @@ impl Display for Event {
 
 #[cfg(test)]
 mod tests {
-    use crate::event::Event;
-    use chrono::{Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Timelike};
+    use crate::event::{Cadence, Event, Recurrence};
+    use chrono::{Datelike, Duration, NaiveDate, NaiveTime, Timelike};
 
     #[test]
     /// tests the new function
@@ -199,6 +297,7 @@ mod tests {
             &tm.to_string(),
             dur,
             Some(loc.as_str()),
+            None,
         );
         let mut e2 = Event::default();
         assert_ne!(e1.title, e2.title);
@@ -228,7 +327,7 @@ mod tests {
         let test_time = "16:10";
         let fmt_date = "%d/%m/%Y";
         let fmt_time = "%H:%M";
-        let dmy_hm = Event::new("test", "test", test_date, test_time, 1.0, None);
+        let dmy_hm = Event::new("test", "test", test_date, test_time, 1.0, None, None);
         assert_eq!(
             dmy_hm.get_start_date(),
             chrono::NaiveDate::parse_from_str(test_date, fmt_date).unwrap()
@@ -237,5 +336,52 @@ mod tests {
             dmy_hm.get_start_time(),
             chrono::NaiveTime::parse_from_str(test_time, fmt_time).unwrap()
         );
+    }
+
+    #[test]
+    /// Test recurrent events
+    fn test_recurrent() {
+        // an event that repeats daily for 5 days
+        let ev_daily = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("daily 5"));
+        assert_eq!(
+            ev_daily.get_recurrence(),
+            Some(&Recurrence {
+                cadence: Cadence::Daily,
+                repetitions: 5
+            })
+        );
+        // an event that repeats weekly for 2 weeks
+        let ev_weekly = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("Weekly 2"));
+        assert_eq!(
+            ev_weekly.get_recurrence(),
+            Some(&Recurrence {
+                cadence: Cadence::Weekly,
+                repetitions: 2
+            })
+        );
+        // an event that repeats monthly for 12 months
+        let ev_monthly = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("MONTHLY 12"));
+        assert_eq!(
+            ev_monthly.get_recurrence(),
+            Some(&Recurrence {
+                cadence: Cadence::Monthly,
+                repetitions: 12
+            })
+        );
+        // an event that does not repeat (badly formatted)
+        let ev_bad_fmt = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("Monthly -1"));
+        assert_eq!(ev_bad_fmt.get_recurrence(), None);
+        // an event that repeats yearly for 110 years
+        let ev_yearly = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("YearLY 110"));
+        assert_eq!(
+            ev_yearly.get_recurrence(),
+            Some(&Recurrence {
+                cadence: Cadence::Yearly,
+                repetitions: 110
+            })
+        );
+        // an events that repeats 0 times (does not repeat)
+        let ev_zero_rep = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("daily 0"));
+        assert_eq!(ev_zero_rep.get_recurrence(), None);
     }
 }

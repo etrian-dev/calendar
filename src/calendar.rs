@@ -2,16 +2,50 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::hash::{Hash, Hasher};
 
-use chrono::{Datelike, Local, NaiveDate};
+use chrono::{Datelike, Duration, Local, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use serde::{Deserialize, Serialize};
 
 use crate::calendar_error::CalendarError;
-use crate::event::Event;
+use crate::event::{Cadence, Event, Recurrence};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Calendar {
     name: String,
     events: HashMap<u64, Event>,
+}
+
+fn expand_recurrence(
+    rec: &Recurrence,
+    dt: &NaiveDate,
+    tm: &NaiveTime,
+) -> Vec<(NaiveDate, NaiveTime)> {
+    let mut rec_dates = Vec::new();
+    for i in 0..=rec.repetitions() {
+        let x = NaiveDateTime::new(*dt, *tm);
+        match rec.cadence() {
+            Cadence::Hourly => {
+                let dt_new = x.checked_add_signed(Duration::hours(i as i64)).unwrap();
+                rec_dates.push((dt_new.date(), dt_new.time()));
+            }
+            Cadence::Daily => {
+                let dt_new = x.checked_add_signed(Duration::days(i as i64)).unwrap();
+                rec_dates.push((dt_new.date(), dt_new.time()));
+            }
+            Cadence::Weekly => {
+                let dt_new = x.checked_add_signed(Duration::weeks(i as i64)).unwrap();
+                rec_dates.push((dt_new.date(), dt_new.time()));
+            }
+            Cadence::Monthly => {
+                let dt_new = x.with_month(dt.month() + i as u32).unwrap();
+                rec_dates.push((dt_new.date(), dt_new.time()));
+            }
+            Cadence::Yearly => {
+                let dt_new = x.with_year(dt.year() + i as i32).unwrap();
+                rec_dates.push((dt_new.date(), dt_new.time()));
+            }
+        }
+    }
+    rec_dates
 }
 
 impl Calendar {
@@ -30,8 +64,6 @@ impl Calendar {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         ev.hash(&mut h);
         let ev_hash = h.finish();
-        dbg!(ev_hash);
-        dbg!(self.events.keys());
         if self.events.contains_key(&ev_hash) {
             return false;
         }
@@ -47,31 +79,54 @@ impl Calendar {
         }
     }
 
-    pub fn list_events_today(&self) -> Vec<&Event> {
+    pub fn list_events_today(&self) -> Vec<Event> {
         let mut events_today = Vec::new();
         // get current date
         let curr_date = Local::today().naive_local();
         for ev in self.events.values() {
-            if curr_date == ev.get_start_date() {
-                events_today.push(ev);
+            // If the event is recurrent then expand its recurrent dates
+            // if any of those is equal to the current then add the modified event to output vec
+            if let Some(rec) = ev.get_recurrence() {
+                for rec_dt in expand_recurrence(rec, &ev.get_start_date(), &ev.get_start_time()) {
+                    if rec_dt.0 == curr_date {
+                        // Since cloning is expensive it is done only on recurrences that should appear
+                        // in the output vector
+                        let mut ev2 = ev.clone();
+                        ev2.set_start_date((rec_dt.0.day(), rec_dt.0.month(), rec_dt.0.year()));
+                        ev2.set_start_time((rec_dt.1.hour(), rec_dt.1.minute(), rec_dt.1.second()));
+                        events_today.push(ev2);
+                    }
+                }
+            } else if curr_date == ev.get_start_date() {
+                events_today.push(ev.clone());
             }
         }
+        // sorts today's events by their start time
+        events_today.sort_unstable_by_key(|ev| ev.get_start_time());
         events_today
     }
-    pub fn list_events_week(&self) -> Vec<&Event> {
+    pub fn list_events_week(&self) -> Vec<Event> {
         let mut events_week = Vec::new();
         // get current date
         let week = Local::today();
 
         for ev in self.events.values() {
             if ev.get_start_date().iso_week() == week.iso_week() {
-                events_week.push(ev);
+                events_week.push(ev.clone());
             }
         }
+        // sorts events by their start date and then start time
+        events_week.sort_unstable_by(|e1, e2| {
+            if e1.get_start_date().cmp(&e2.get_start_date()) == core::cmp::Ordering::Equal {
+                e1.get_start_time().cmp(&e2.get_start_time())
+            } else {
+                e1.get_start_date().cmp(&e2.get_start_date())
+            }
+        });
         events_week
     }
 
-    pub fn list_events_month(&self) -> Vec<&Event> {
+    pub fn list_events_month(&self) -> Vec<Event> {
         let mut events_month = Vec::new();
         // get current date
         let dt = Local::today();
@@ -81,13 +136,21 @@ impl Calendar {
         for ev in self.events.values() {
             if ev.get_start_date().month() == curr_month && ev.get_start_date().year() == curr_year
             {
-                events_month.push(ev);
+                events_month.push(ev.clone());
             }
         }
+        // sorts events by their start date and then start time
+        events_month.sort_unstable_by(|e1, e2| {
+            if e1.get_start_date().cmp(&e2.get_start_date()) == core::cmp::Ordering::Equal {
+                e1.get_start_time().cmp(&e2.get_start_time())
+            } else {
+                e1.get_start_date().cmp(&e2.get_start_date())
+            }
+        });
         events_month
     }
 
-    pub fn list_events_between(&self, from: Option<String>, until: Option<String>) -> Vec<&Event> {
+    pub fn list_events_between(&self, from: Option<String>, until: Option<String>) -> Vec<Event> {
         let from_date = match from {
             Some(s) => NaiveDate::parse_from_str(&s, "%d/%m/%Y").unwrap_or(chrono::naive::MIN_DATE),
             None => chrono::naive::MIN_DATE,
@@ -100,9 +163,17 @@ impl Calendar {
         let mut events_between = Vec::new();
         for ev in self.events.values() {
             if ev.get_start_date() <= until_date && ev.get_start_date() >= from_date {
-                events_between.push(ev);
+                events_between.push(ev.clone());
             }
         }
+        // sorts events by their start date and then start time
+        events_between.sort_unstable_by(|e1, e2| {
+            if e1.get_start_date().cmp(&e2.get_start_date()) == core::cmp::Ordering::Equal {
+                e1.get_start_time().cmp(&e2.get_start_time())
+            } else {
+                e1.get_start_date().cmp(&e2.get_start_date())
+            }
+        });
         events_between
     }
 }
@@ -137,10 +208,9 @@ mod tests {
     /// tests the event addition method
     fn test_event_addition() {
         let e1 = Event::default();
-        let mut e2 = Event::default();
+        let e2 = Event::default();
         let e1_hash = get_hash(&e1);
         let e2_hash = get_hash(&e2);
-        e2.set_title("New title");
 
         let mut empty_cal = Calendar::new("test");
         let full_cal = Calendar {
@@ -157,10 +227,9 @@ mod tests {
     #[test]
     /// tests adding multiple different events
     fn test_event_multiple() {
-        use std::iter::zip;
         // defines some events
         let v = vec![
-            Event::new("title1", "desc1", "11/02/2001", "-", 3.6, None),
+            Event::new("title1", "desc1", "11/02/2001", "-", 3.6, None, None),
             Event::new(
                 "title2",
                 "desc2",
@@ -168,6 +237,7 @@ mod tests {
                 "-",
                 3.6,
                 Some("Some location"),
+                None,
             ),
             Event::new(
                 "title3",
@@ -176,21 +246,32 @@ mod tests {
                 "-",
                 3.6,
                 Some("Random loc"),
+                None,
             ),
-            Event::new("title4", "desc4", "13/04/1999", "-", 3.6, None),
-            Event::new("title5", "desc5", "21/01/2021", "-", 3.6, None),
-            Event::new("title6", "desc6", "13/03/2001", "-", 3.6, None),
-            Event::new("title7", "desc7", "12/12/2012", "-", 3.6, Some("Pisa")),
+            Event::new("title4", "desc4", "13/04/1999", "-", 3.6, None, None),
+            Event::new("title5", "desc5", "21/01/2021", "-", 3.6, None, None),
+            Event::new("title6", "desc6", "13/03/2001", "-", 3.6, None, None),
+            Event::new(
+                "title7",
+                "desc7",
+                "12/12/2012",
+                "-",
+                3.6,
+                Some("Pisa"),
+                None,
+            ),
         ];
 
         let mut cal = Calendar::new("test_multiple_cal");
+        assert_eq!(cal.events.len(), 0);
         for ev in v.clone() {
             cal.add_event(ev);
         }
+        assert_eq!(cal.events.len(), v.len());
 
-        // The identity filter is just implemented with None args in the method call below
-        for ev in zip(cal.list_events_between(None, None), &v) {
-            assert_eq!(ev.0, ev.1);
+        for ev in &v {
+            let h = get_hash(ev);
+            assert!(cal.events.contains_key(&h));
         }
     }
 
@@ -225,6 +306,7 @@ mod tests {
                 &dt.time().format("%H:%M").to_string(),
                 1.0,
                 None,
+                None,
             );
             cal.add_event(e);
         }
@@ -232,5 +314,31 @@ mod tests {
         for ev in cal.list_events_week() {
             assert_eq!(ev.get_start_date().iso_week(), dt.iso_week());
         }
+    }
+
+    #[test]
+    /// tests that duplicate events (events with the same hash) are not added
+    fn test_duplicate_add() {
+        let mut cal = Calendar::new("test");
+        let ev = Event::new(
+            "title",
+            "description",
+            "10/02/2011",
+            "15:00",
+            4.2,
+            Some("Somewhere"),
+            None,
+        );
+        assert_eq!(cal.events.len(), 0);
+        cal.add_event(ev.clone());
+        assert_eq!(cal.events.len(), 1);
+        // trying to add an event with the same hash should not result in a new event being added
+        cal.add_event(ev.clone());
+        assert_eq!(cal.events.len(), 1);
+        let mut ev2 = ev;
+        // but if the event is mutated than it should have a different hash and hence be added
+        ev2.set_title("Random");
+        cal.add_event(ev2);
+        assert_eq!(cal.events.len(), 2);
     }
 }

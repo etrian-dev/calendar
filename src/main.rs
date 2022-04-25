@@ -31,21 +31,16 @@ fn read_calendar(p: &Path) -> Result<Calendar, CalendarError> {
 fn write_calendar(cal: &Calendar, p: &Path) -> bool {
     let f = File::create(p).unwrap();
     let writer = BufWriter::new(f);
-    match serde_json::to_writer_pretty(writer, cal) {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+    serde_json::to_writer_pretty(writer, cal).is_ok()
 }
 
 fn create_cal(calname: &str, p: &Path) -> Result<Calendar, CalendarError> {
     let cal_file = p.join(calname).with_extension("json");
     let dir_iter = fs::read_dir(p).unwrap();
 
-    for entry in dir_iter {
-        if let Ok(ent) = entry {
-            if ent.path() == cal_file {
-                return Err(CalendarError::CalendarAlreadyExists(calname.to_string()));
-            }
+    for entry in dir_iter.flatten() {
+        if entry.path() == cal_file {
+            return Err(CalendarError::CalendarAlreadyExists(calname.to_string()));
         }
     }
     Ok(Calendar::new(calname))
@@ -54,11 +49,9 @@ fn create_cal(calname: &str, p: &Path) -> Result<Calendar, CalendarError> {
 fn delete_cal(calname: &str, p: &Path) -> bool {
     let cal_file = p.join(calname).with_extension("json");
     let dir_iter = fs::read_dir(p).unwrap();
-    for entry in dir_iter {
-        if let Ok(ent) = entry {
-            if ent.path() == cal_file {
-                return fs::remove_file(ent.path()).is_ok();
-            }
+    for entry in dir_iter.flatten() {
+        if entry.path() == cal_file {
+            return fs::remove_file(entry.path()).is_ok();
         }
     }
     false
