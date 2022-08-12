@@ -179,6 +179,14 @@ impl Event {
         }
     }
 
+    pub fn overlaps(&self, other: &Event) -> bool {
+        let self_start = self.start_date.and_time(self.start_time);
+        let other_start = other.get_start_date().and_time(other.get_start_time());
+        let self_end = self_start + self.duration;
+        let other_end = other_start + Duration::seconds(other.get_duration());
+        other_start <= self_end && other_end >= self_start
+    }
+
     pub fn set_title(&mut self, new_title: &str) {
         self.title = String::from(new_title);
     }
@@ -251,11 +259,6 @@ impl Display for Event {
         let hashval = h.finish();
 
         let desc = self.get_description();
-        let idx = if desc.len().min(49) > 0 {
-            desc.len().min(49)
-        } else {
-            0
-        };
         let mut loc = String::from(self.get_location());
         if !loc.is_empty() {
             loc = " @ ".to_owned() + &loc;
@@ -268,7 +271,11 @@ impl Display for Event {
             self.get_start_time().format("%H:%M"),
             self.get_title(),
             &loc,
-            desc.get(0..idx).unwrap_or("Failed to get description")
+            if desc.len() < 50 {
+                desc.to_string()
+            } else {
+                desc[0..49].to_string() + "..."
+            }
         )
     }
 }

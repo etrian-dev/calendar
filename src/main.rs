@@ -59,6 +59,37 @@ fn delete_cal(calname: &str, p: &Path) -> bool {
     false
 }
 
+fn list_calendars(p: &Path) {
+    let mut known_cals = Vec::new();
+    let dir_iter = fs::read_dir(p).unwrap();
+    for ent in dir_iter.flatten() {
+        let p = ent.path();
+        let ext = p.extension();
+        let stem = p.file_stem().unwrap();
+        if let Some(s) = ext {
+            if s.eq("json") {
+                known_cals.push(read_calendar(&p.with_file_name(stem)));
+            }
+        }
+    }
+    println!("Known calendars: ");
+    for cal in known_cals {
+        if let Ok(c) = cal {
+            println!(
+                "{} (owned by {})",
+                c.get_name(),
+                if c.get_owner().is_empty() {
+                    "<unknown>"
+                } else {
+                    c.get_owner()
+                }
+            );
+        } else {
+            eprintln!("Error for calendar!");
+        }
+    }
+}
+
 fn main() {
     // Initialize logging
     env_logger::init();
@@ -72,8 +103,13 @@ fn main() {
         return;
     }
 
+    let mut readonly = false;
     let res = match args {
-        cli::Cli { view: Some(s), .. } => read_calendar(&data_dir.join(Path::new(&s))),
+        cli::Cli { view: Some(s), .. } => {
+            readonly = true;
+            read_calendar(&data_dir.join(Path::new(&s)))
+        }
+        cli::Cli { edit: Some(s), .. } => read_calendar(&data_dir.join(Path::new(&s))),
         cli::Cli {
             create: Some(s), ..
         } => create_cal(&s, data_dir.as_path()),
@@ -86,7 +122,12 @@ fn main() {
                 Err(CalendarError::CalendarNotFound(s))
             }
         }
-        _ => Ok(Calendar::new("default", "calendar")),
+        cli::Cli { list: true, .. } => {
+            list_calendars(data_dir.as_path());
+            readonly = true;
+            Ok(Calendar::default())
+        }
+        _ => Ok(Calendar::default()),
     };
     if let Err(e) = res {
         eprintln!("{:?}", e);
@@ -94,11 +135,25 @@ fn main() {
     }
     let mut cal = res.unwrap();
 
-    let result = match args.subcommand {
-        Some(Commands::Add(x)) => cli::handle_add(&mut cal, x),
-        Some(Commands::Remove(rm)) => cli::handle_remove(&mut cal, rm),
-        Some(Commands::List(l)) => cli::handle_list(&cal, l),
-        None => true, // no commands to perform => ok to save result
+    let result = match (args.subcommand, readonly) {
+        (Some(Commands::Add(x)), false) => match cli::handle_add(&mut cal, x) {
+            Ok(x) => x,
+            Err(e) => {
+                eprintln!("{}", e);
+                false
+            }
+        },
+        (Some(Commands::Remove(rm)), false) => cli::handle_remove(&mut cal, rm),
+        (Some(Commands::List(l)), _) => cli::handle_list(&cal, l),
+        (Some(Commands::Set(params)), false) => cli::handle_params(&mut cal, params),
+        (Some(_), true) => {
+            eprintln!(
+                "Calendar {} cannot be modified! (rerun without --view)",
+                cal.get_name()
+            );
+            false
+        }
+        (None, _) => true, // no commands to perform => ok to save result
     };
 
     if result

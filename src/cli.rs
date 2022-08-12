@@ -7,6 +7,7 @@ use chrono::{Datelike, NaiveDateTime, Timelike};
 use clap::{ArgGroup, Args, Parser, Subcommand};
 
 use crate::calendar::Calendar;
+use crate::calendar_error::CalendarError;
 use crate::event::Event;
 
 /// Simple calendar program
@@ -19,12 +20,18 @@ pub struct Cli {
     /// View this calendar (if it exists)
     #[clap(short, long)]
     pub view: Option<String>,
+    /// Edit an existing calendar
+    #[clap(short, long)]
+    pub edit: Option<String>,
     /// Create a calendar
     #[clap(short, long)]
     pub create: Option<String>,
     /// Delete a calendar
     #[clap(short, long)]
     pub delete: Option<String>,
+    /// List all known calendars
+    #[clap(short, long, action)]
+    pub list: bool,
 }
 
 impl Cli {
@@ -41,6 +48,8 @@ pub enum Commands {
     Remove(Remove),
     /// Lists events with some filter
     List(Filter),
+    /// Sets some parameter (such as the calendar's owner)
+    Set(CalParams),
 }
 
 #[derive(Args)]
@@ -75,7 +84,10 @@ pub struct Add {
 #[derive(Args)]
 pub struct Remove {
     /// The id of the event to be removed
-    eid: u64,
+    eid: Option<u64>,
+    #[clap(short, long, action)]
+    /// Removes all events in the calendar
+    all: bool,
 }
 
 #[derive(Args)]
@@ -95,6 +107,16 @@ pub struct Filter {
     /// filters events until the given date
     #[clap(long)]
     until: Option<String>,
+}
+
+#[derive(Args)]
+pub struct CalParams {
+    #[clap(long)]
+    /// Sets the calendar's name
+    name: Option<String>,
+    #[clap(long)]
+    /// Sets the calendar's owner
+    owner: Option<String>,
 }
 
 fn ics_parse_date_time(
@@ -154,25 +176,29 @@ fn handle_ics(fpath: &str) -> Result<Vec<Event>, String> {
         } else {
             // File read into the buf String: parse it with the iCalendar library
             let str_unfolded = icalendar::parser::unfold(&buf);
-            let cal = icalendar::parser::read_calendar(&str_unfolded)?;
-            let mut events = Vec::new();
-            for comp in cal.components {
-                if comp.name == "VEVENT" {
-                    let mut e = Event::default();
-                    match_property(&mut e, comp);
-                    events.push(e);
+            return match icalendar::parser::read_calendar(&str_unfolded) {
+                Ok(cal) => {
+                    let mut events = Vec::new();
+                    for comp in cal.components {
+                        if comp.name == "VEVENT" {
+                            let mut e = Event::default();
+                            match_property(&mut e, comp);
+                            events.push(e);
+                        }
+                    }
+                    Ok(events)
                 }
-            }
-            return Ok(events);
+                Err(s) => Err(format!("Error parsing {}: {}", path.display(), s)),
+            };
         }
     }
     Err(format!(
-        "{} does not exists or is not an .ics file",
+        "{} does not exists or is not a valid .ics file",
         path.display()
     ))
 }
 
-pub fn handle_add(cal: &mut Calendar, x: Add) -> bool {
+pub fn handle_add(cal: &mut Calendar, x: Add) -> Result<bool, CalendarError> {
     // if the flag --from-file is given it takes precedence
     if let Some(path) = x.from_file {
         match handle_ics(&path) {
@@ -188,47 +214,46 @@ pub fn handle_add(cal: &mut Calendar, x: Add) -> bool {
                     "Imported {} (total: {}) events from {}",
                     imported, total_events, &path
                 );
+                Ok(true)
             }
-            Err(e) => println!("Failed parsing .ics file: {}", e),
+            Err(e) => Err(CalendarError::IcsParsingFailed(e)),
         }
-        // whether events were succeddfully parsed or not, return true to write changes
-        return true;
+    } else {
+        let default_values = Event::default();
+        let title = match x.title {
+            Some(val) => val,
+            None => default_values.get_title().to_string(),
+        };
+        let description = match x.description {
+            Some(val) => val,
+            None => default_values.get_description().to_string(),
+        };
+        let start_date = match x.start_date {
+            Some(val) => val,
+            None => default_values.get_start_date().to_string(),
+        };
+        let start_time = match x.start_time {
+            Some(val) => val,
+            None => default_values.get_start_time().to_string(),
+        };
+        let duration = match x.duration {
+            Some(val) => val.parse().unwrap(),
+            None => default_values.get_duration() as f32,
+        };
+        let loc = x.location.as_deref();
+        let rec = x.recurrence.as_deref();
+
+        let ev = Event::new(
+            &title,
+            &description,
+            &start_date,
+            &start_time,
+            duration,
+            loc,
+            rec,
+        );
+        Ok(cal.add_event(ev))
     }
-
-    let default_values = Event::default();
-    let title = match x.title {
-        Some(val) => val,
-        None => default_values.get_title().to_string(),
-    };
-    let description = match x.description {
-        Some(val) => val,
-        None => default_values.get_description().to_string(),
-    };
-    let start_date = match x.start_date {
-        Some(val) => val,
-        None => default_values.get_start_date().to_string(),
-    };
-    let start_time = match x.start_time {
-        Some(val) => val,
-        None => default_values.get_start_time().to_string(),
-    };
-    let duration = match x.duration {
-        Some(val) => val.parse().unwrap(),
-        None => default_values.get_duration() as f32,
-    };
-    let loc = x.location.as_deref();
-    let rec = x.recurrence.as_deref();
-
-    let ev = Event::new(
-        &title,
-        &description,
-        &start_date,
-        &start_time,
-        duration,
-        loc,
-        rec,
-    );
-    cal.add_event(ev)
 }
 
 pub fn handle_list(cal: &Calendar, x: Filter) -> bool {
@@ -258,14 +283,33 @@ pub fn handle_list(cal: &Calendar, x: Filter) -> bool {
 }
 
 pub fn handle_remove(cal: &mut Calendar, x: Remove) -> bool {
-    match cal.remove_event(x.eid) {
-        Ok(ev) => {
-            println!("Event \n{ev}\nremoved successfully");
-            true
-        }
-        Err(e) => {
-            println!("Failed to remove event {}: {e}", x.eid);
-            false
+    if x.all {
+        let calsize = cal.get_size();
+        cal.clear();
+        println!("Calendar {} cleared ({} events removed)", cal.get_name(), calsize);
+        return true;
+    }
+    if let Some(eid) = x.eid {
+        match cal.remove_event(eid) {
+            Ok(ev) => {
+                println!("Event \n{ev}\nremoved successfully");
+                return true;
+            }
+            Err(e) => {
+                println!("Failed to remove event {}: {e}", eid);
+                return false;
+            }
         }
     }
+    true
+}
+
+pub fn handle_params(cal: &mut Calendar, params: CalParams) -> bool {
+    if let Some(s) = params.name {
+        cal.set_name(&s);
+    }
+    if let Some(s) = params.owner {
+        cal.set_owner(&s);
+    }
+    true
 }

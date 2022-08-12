@@ -68,6 +68,10 @@ impl Calendar {
         &self.name
     }
 
+    pub fn get_size(&self) -> usize {
+        self.events.len()
+    }
+
     pub fn set_owner(&mut self, s: &str) {
         self.owner = String::from(s);
     }
@@ -76,12 +80,22 @@ impl Calendar {
         self.name = String::from(s);
     }
 
+    pub fn clear(&mut self) {
+        self.events.clear();
+    }
+
     pub fn add_event(&mut self, ev: Event) -> bool {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         ev.hash(&mut h);
         let ev_hash = h.finish();
         if self.events.contains_key(&ev_hash) {
             return false;
+        }
+        // Warn the user if this event overlaps with some other event
+        for e in self.events.values() {
+            if e.overlaps(&ev) {
+                eprintln!("Warning: the event overlaps with event {}", e);
+            }
         }
         self.events.insert(ev_hash, ev);
         true
@@ -246,7 +260,7 @@ impl Display for Calendar {
         }
         write!(
             f,
-            "--- Calendar {} ({}) ---\ntotal events: {}\n{}",
+            "--- {} ({}) ---\ntotal events: {}\n{}",
             self.name,
             self.owner,
             tot_events,
@@ -255,6 +269,15 @@ impl Display for Calendar {
     }
 }
 
+impl Default for Calendar {
+    fn default() -> Self {
+        Calendar {
+            owner: String::from("default"),
+            name: String::from("default"),
+            events: HashMap::new(),
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use chrono::Datelike;
@@ -407,5 +430,52 @@ mod tests {
         ev2.set_title("Random");
         cal.add_event(ev2);
         assert_eq!(cal.events.len(), 2);
+    }
+
+    #[test]
+    /// tests the clear method
+    fn test_clear() {
+        // defines some events
+        let v = vec![
+            Event::new("title1", "desc1", "11/02/2001", "-", 3.6, None, None),
+            Event::new(
+                "title2",
+                "desc2",
+                "08/09/2011",
+                "-",
+                3.6,
+                Some("Some location"),
+                None,
+            ),
+            Event::new(
+                "title3",
+                "desc3",
+                "11/02/2001",
+                "-",
+                3.6,
+                Some("Random loc"),
+                None,
+            ),
+            Event::new("title4", "desc4", "13/04/1999", "-", 3.6, None, None),
+            Event::new("title5", "desc5", "21/01/2021", "-", 3.6, None, None),
+            Event::new("title6", "desc6", "13/03/2001", "-", 3.6, None, None),
+            Event::new(
+                "title7",
+                "desc7",
+                "12/12/2012",
+                "-",
+                3.6,
+                Some("Pisa"),
+                None,
+            ),
+        ];
+        let mut cal = Calendar::new("owner", "test");
+        let vlen = v.len();
+        for ev in v {
+            cal.add_event(ev);
+        }
+        assert_eq!(vlen, cal.list_events_between(None, None).len());
+        cal.clear();
+        assert_eq!(0, cal.list_events_between(None, None).len());
     }
 }
