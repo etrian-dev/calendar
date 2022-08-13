@@ -4,7 +4,7 @@ mod cli;
 mod event;
 
 use calendar_error::CalendarError;
-use log::warn;
+use log::{warn, error};
 
 use crate::calendar::Calendar;
 use crate::cli::{Cli, Commands};
@@ -68,21 +68,22 @@ fn list_calendars(p: &Path) {
         let stem = p.file_stem().unwrap();
         if let Some(s) = ext {
             if s.eq("json") {
-                known_cals.push(read_calendar(&p.with_file_name(stem)));
+                known_cals.push((read_calendar(&p.with_file_name(stem)), p.clone()));
             }
         }
     }
     println!("Known calendars: ");
     for cal in known_cals {
-        if let Ok(c) = cal {
+        if let (Ok(cal), path) = cal {
             println!(
-                "{} (owned by {})",
-                c.get_name(),
-                if c.get_owner().is_empty() {
+                "{} (owned by {}) @ {}",
+                cal.get_name(),
+                if cal.get_owner().is_empty() {
                     "<unknown>"
                 } else {
-                    c.get_owner()
-                }
+                    cal.get_owner()
+                },
+                path.display()
             );
         } else {
             eprintln!("Error for calendar!");
@@ -99,7 +100,7 @@ fn main() {
     let mut data_dir = std::env::current_dir().unwrap();
     data_dir.push("data");
     if let Err(e) = fs::create_dir_all(data_dir.as_path()) {
-        println!("Data directory creation failed: {e}");
+        error!("Data directory creation failed: {e}");
         return;
     }
 
@@ -127,10 +128,13 @@ fn main() {
             readonly = true;
             Ok(Calendar::default())
         }
-        _ => Ok(Calendar::default()),
+        _ => {
+            warn!("Unrecognized command or option: {}", );
+            Ok(Calendar::default())
+        },
     };
     if let Err(e) = res {
-        eprintln!("{:?}", e);
+        error!("{}", e);
         return;
     }
     let mut cal = res.unwrap();
@@ -139,7 +143,7 @@ fn main() {
         (Some(Commands::Add(x)), false) => match cli::handle_add(&mut cal, x) {
             Ok(x) => x,
             Err(e) => {
-                eprintln!("{}", e);
+                error!("{}", e);
                 false
             }
         },
@@ -147,7 +151,7 @@ fn main() {
         (Some(Commands::List(l)), _) => cli::handle_list(&cal, l),
         (Some(Commands::Set(params)), false) => cli::handle_params(&mut cal, params),
         (Some(_), true) => {
-            eprintln!(
+            warn!(
                 "Calendar {} cannot be modified! (rerun without --view)",
                 cal.get_name()
             );

@@ -10,6 +10,8 @@ use crate::calendar::Calendar;
 use crate::calendar_error::CalendarError;
 use crate::event::Event;
 
+use log::{error, info};
+
 /// Simple calendar program
 #[derive(Parser)]
 #[clap(author,version,about,long_about=None)]
@@ -210,7 +212,7 @@ pub fn handle_add(cal: &mut Calendar, x: Add) -> Result<bool, CalendarError> {
                         imported += 1;
                     }
                 }
-                println!(
+                info!(
                     "Imported {} (total: {}) events from {}",
                     imported, total_events, &path
                 );
@@ -286,7 +288,11 @@ pub fn handle_remove(cal: &mut Calendar, x: Remove) -> bool {
     if x.all {
         let calsize = cal.get_size();
         cal.clear();
-        println!("Calendar {} cleared ({} events removed)", cal.get_name(), calsize);
+        println!(
+            "Calendar {} cleared ({} events removed)",
+            cal.get_name(),
+            calsize
+        );
         return true;
     }
     if let Some(eid) = x.eid {
@@ -296,7 +302,7 @@ pub fn handle_remove(cal: &mut Calendar, x: Remove) -> bool {
                 return true;
             }
             Err(e) => {
-                println!("Failed to remove event {}: {e}", eid);
+                error!("Failed to remove event {}: {e}", eid);
                 return false;
             }
         }

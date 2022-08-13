@@ -12,7 +12,7 @@
  - [x] handle --create, --view and --delete flags
  - [x] handle --edit flag
  - [x] a read-only mode for calendars (--view)
- - [ ] flag to --list all known calendars in ./data
+ - [x] flag to --list all known calendars in ./data
 ## Subcommands
  - [Add event](#add)
  - [Remove event](#remove)
@@ -24,7 +24,7 @@
 ## Remove
  - [x] Given event hash, remove element
  - [ ] Support filter functions for remotion
- - [ ] Flag -a|--all to remove all events
+ - [x] Flag -a|--all to remove all events
 ## List
 Lists by default all events
  - [ ] Improve the Display trait impl for Calendar/Event

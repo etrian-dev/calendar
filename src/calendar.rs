@@ -3,6 +3,7 @@ use std::fmt::{Debug, Display};
 use std::hash::{Hash, Hasher};
 
 use chrono::{Datelike, Duration, Local, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+use log::warn;
 use serde::{Deserialize, Serialize};
 
 use crate::calendar_error::CalendarError;
@@ -94,7 +95,7 @@ impl Calendar {
         // Warn the user if this event overlaps with some other event
         for e in self.events.values() {
             if e.overlaps(&ev) {
-                eprintln!("Warning: the event overlaps with event {}", e);
+                warn!("Warning: the event overlaps with event {}", e);
             }
         }
         self.events.insert(ev_hash, ev);

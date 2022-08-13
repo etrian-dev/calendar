@@ -7,7 +7,7 @@ use std::result::Result;
 use std::str::FromStr;
 use std::vec;
 
-use log::warn;
+use log::{warn};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub enum Cadence {
