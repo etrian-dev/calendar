@@ -4,7 +4,7 @@ mod cli;
 mod event;
 
 use calendar_error::CalendarError;
-use log::{warn, error};
+use log::{error, warn};
 
 use crate::calendar::Calendar;
 use crate::cli::{Cli, Commands};
@@ -129,9 +129,12 @@ fn main() {
             Ok(Calendar::default())
         }
         _ => {
-            warn!("Unrecognized command or option: {}", );
+            warn!(
+                "Unrecognized command or option: {}",
+                "TODO: implement error reporting"
+            );
             Ok(Calendar::default())
-        },
+        }
     };
     if let Err(e) = res {
         error!("{}", e);

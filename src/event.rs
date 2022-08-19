@@ -1,4 +1,4 @@
-use chrono::{Duration, Local, NaiveDate, NaiveTime};
+use chrono::{Duration, Local, NaiveDate, NaiveTime, Datelike, NaiveDateTime, Months};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::Result as fmtResult;
 use std::fmt::{Debug, Display};
@@ -7,7 +7,7 @@ use std::result::Result;
 use std::str::FromStr;
 use std::vec;
 
-use log::{warn};
+use log::warn;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub enum Cadence {
@@ -101,6 +101,34 @@ fn parse_recurrence(s: &str) -> Option<Recurrence> {
     }
 }
 
+pub fn next_occurrence(ev: &Event, cadence: &Cadence) -> (NaiveDateTime, NaiveDateTime) {
+    let ev_start = ev.get_start_date().and_time(ev.get_start_time());
+    let ev_end = ev_start + Duration::seconds(ev.get_duration());
+    match cadence {
+        Cadence::Hourly => (ev_start + Duration::hours(1), ev_end + Duration::hours(1)),
+        Cadence::Daily => (ev_start + Duration::days(1),ev_end + Duration::days(1)),
+        Cadence::Weekly => (ev_start + Duration::weeks(1), ev_end + Duration::weeks(1)),
+        Cadence::Monthly => {
+            (NaiveDateTime::new(
+                ev_start.date() + Months::new(1), 
+                ev_start.time()),
+            NaiveDateTime::new(
+                ev_end.date() + Months::new(1),
+                ev_end.time()
+            ))
+        }
+        Cadence::Yearly => {
+            (NaiveDateTime::new(
+                ev_start.date() + Months::new(12), 
+                ev_start.time()),
+            NaiveDateTime::new(
+                ev_end.date() + Months::new(12),
+                ev_end.time()
+            ))
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct Event {
     title: String,
@@ -179,12 +207,43 @@ impl Event {
         }
     }
 
+
+
     pub fn overlaps(&self, other: &Event) -> bool {
         let self_start = self.start_date.and_time(self.start_time);
         let other_start = other.get_start_date().and_time(other.get_start_time());
         let self_end = self_start + self.duration;
         let other_end = other_start + Duration::seconds(other.get_duration());
-        other_start <= self_end && other_end >= self_start
+        let mut overlap = other_start <= self_end && other_end >= self_start;
+        if overlap {
+            overlap
+        } else {
+            if self.recurrence.is_some() {
+                let rec = self.recurrence.as_ref().unwrap();
+                let cad = rec.cadence();
+                let cnt = rec.repetitions;
+                for _ in 0..cnt {
+                    let (new_start, new_end) = next_occurrence(&self, cad);
+                    overlap = other_start <= new_start && other_end >= new_end;
+                    if overlap {
+                        return overlap;
+                    }
+                }
+            }
+            if other.get_recurrence().is_some() {
+                let rec = self.recurrence.as_ref().unwrap();
+                let cad = rec.cadence();
+                let cnt = rec.repetitions;
+                for _ in 0..cnt {
+                    let (new_start, new_end)= next_occurrence(&other, cad);
+                    overlap = new_start <= self_end && new_end >= self_start;
+                    if overlap {
+                        return overlap;
+                    }
+                }
+            }
+            false
+        }
     }
 
     pub fn set_title(&mut self, new_title: &str) {

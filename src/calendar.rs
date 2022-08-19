@@ -210,12 +210,12 @@ impl Calendar {
 
     pub fn list_events_between(&self, from: Option<String>, until: Option<String>) -> Vec<Event> {
         let from_date = match from {
-            Some(s) => NaiveDate::parse_from_str(&s, "%d/%m/%Y").unwrap_or(chrono::naive::MIN_DATE),
-            None => chrono::naive::MIN_DATE,
+            Some(s) => NaiveDate::parse_from_str(&s, "%d/%m/%Y").unwrap_or(chrono::NaiveDate::MIN),
+            None => chrono::NaiveDate::MIN,
         };
         let until_date = match until {
-            Some(s) => NaiveDate::parse_from_str(&s, "%d/%m/%Y").unwrap_or(chrono::naive::MAX_DATE),
-            None => chrono::naive::MAX_DATE,
+            Some(s) => NaiveDate::parse_from_str(&s, "%d/%m/%Y").unwrap_or(chrono::NaiveDate::MAX),
+            None => chrono::NaiveDate::MAX,
         };
 
         let mut events_between = Vec::new();
