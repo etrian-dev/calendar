@@ -6,9 +6,9 @@ use std::{fs, path};
 use chrono::{Datelike, NaiveDateTime, Timelike};
 use clap::{ArgGroup, Args, Parser, Subcommand};
 
-use crate::calendar::Calendar;
-use crate::calendar_error::CalendarError;
-use crate::event::Event;
+use calendar_lib::calendar::Calendar;
+use calendar_lib::calendar_error::CalendarError;
+use calendar_lib::event::Event;
 
 use log::{error, info};
 
@@ -213,6 +213,10 @@ pub fn handle_add(cal: &mut Calendar, x: Add) -> Result<bool, CalendarError> {
                     }
                 }
                 info!(
+                    "Imported {} (total: {}) events from {}",
+                    imported, total_events, &path
+                );
+                println!(
                     "Imported {} (total: {}) events from {}",
                     imported, total_events, &path
                 );

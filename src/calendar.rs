@@ -90,12 +90,17 @@ impl Calendar {
         ev.hash(&mut h);
         let ev_hash = h.finish();
         if self.events.contains_key(&ev_hash) {
+            warn!("Event with hash {} already in this calendar: calendar not modified", ev_hash);
+            eprintln!("Event \"{}\" already in this calendar: calendar not modified", ev.get_title());
             return false;
         }
         // Warn the user if this event overlaps with some other event
         for e in self.events.values() {
             if e.overlaps(&ev) {
-                warn!("Warning: the event overlaps with event {}", e);
+                e.hash(&mut h);
+                let e_hash = h.finish();
+                warn!("Warning: the event {} overlaps with event {}", ev_hash, e_hash);
+                eprintln!("Warning: the event \"{}\" overlaps with event \"{}\"", ev.get_title(), e.get_title());
             }
         }
         self.events.insert(ev_hash, ev);

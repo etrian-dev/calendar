@@ -1,4 +1,4 @@
-use chrono::{Duration, Local, NaiveDate, NaiveTime, Datelike, NaiveDateTime, Months};
+use chrono::{Duration, Local, NaiveDate, NaiveTime, NaiveDateTime, Months};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::Result as fmtResult;
 use std::fmt::{Debug, Display};

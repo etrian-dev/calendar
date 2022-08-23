@@ -1,12 +1,9 @@
-mod calendar;
-mod calendar_error;
 mod cli;
-mod event;
 
-use calendar_error::CalendarError;
+use calendar_lib::calendar_error::CalendarError;
 use log::{error, warn};
 
-use crate::calendar::Calendar;
+use calendar_lib::calendar::Calendar;
 use crate::cli::{Cli, Commands};
 
 use std::fs::{self, File};
