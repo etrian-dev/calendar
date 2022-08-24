@@ -5,6 +5,7 @@ use std::{fs, path};
 
 use chrono::{Datelike, NaiveDateTime, Timelike};
 use clap::{ArgGroup, Args, Parser, Subcommand};
+use icalendar::parser::{unfold, read_calendar, Property, Component};
 
 use calendar_lib::calendar::Calendar;
 use calendar_lib::calendar_error::CalendarError;
@@ -122,14 +123,14 @@ pub struct CalParams {
 }
 
 fn ics_parse_date_time(
-    prop: &icalendar::parser::Property,
+    prop: &Property,
 ) -> (chrono::NaiveDate, chrono::NaiveTime) {
     let dt = NaiveDateTime::parse_from_str(prop.val.as_str(), "%Y%m%dT%H%M%SZ")
         .expect("Failed to parse the DTSTART field");
     (dt.date(), dt.time())
 }
 
-fn match_property(ev: &mut Event, comp: icalendar::parser::Component) {
+fn match_property(ev: &mut Event, comp: Component) {
     for prop in comp.properties.iter() {
         match prop.name.as_str() {
             "SUMMARY" => ev.set_title(prop.val.as_str()),
@@ -177,8 +178,8 @@ fn handle_ics(fpath: &str) -> Result<Vec<Event>, String> {
             return Err(format!("Cannot read ics file: {}", e));
         } else {
             // File read into the buf String: parse it with the iCalendar library
-            let str_unfolded = icalendar::parser::unfold(&buf);
-            return match icalendar::parser::read_calendar(&str_unfolded) {
+            let str_unfolded = unfold(&buf);
+            return match read_calendar(&str_unfolded) {
                 Ok(cal) => {
                     let mut events = Vec::new();
                     for comp in cal.components {

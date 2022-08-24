@@ -1,5 +1,6 @@
 # Calenda.rs
 ## Features
+ - [ ] generation of .ics events from shell mode (needs support from the library)
  - [ ] add INTERVAL=?? in recurrence parsing (see [RFC](https://icalendar.org/iCalendar-RFC-5545/3-8-5-3-recurrence-rule.html))
  - [ ] detect and warn the user when adding overlapping events
  - [ ] shell mode as a binary
@@ -7,6 +8,7 @@
  - [ ] test recurrence overlaps
 ## Event struct
  - [x] Add support for recurrent events
+ - [ ] Support EXDATE property to exclude specific dates from RRULE
  - [x] Add location string (also in ics parsing)
  - [ ] fix integration tests in directory tests/
  - [ ] better handling of serialization/deserialization of calendars

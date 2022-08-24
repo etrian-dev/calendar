@@ -11,6 +11,8 @@ use log::warn;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub enum Cadence {
+    Secondly,
+    Minutely,
     Hourly,
     Daily,
     Weekly,
@@ -34,6 +36,8 @@ impl FromStr for Cadence {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
+            "secondly" => Ok(Cadence::Secondly),
+            "minutely" => Ok(Cadence::Minutely),
             "hourly" => Ok(Cadence::Hourly),
             "daily" => Ok(Cadence::Daily),
             "weekly" => Ok(Cadence::Weekly),
@@ -105,6 +109,8 @@ pub fn next_occurrence(ev: &Event, cadence: &Cadence) -> (NaiveDateTime, NaiveDa
     let ev_start = ev.get_start_date().and_time(ev.get_start_time());
     let ev_end = ev_start + Duration::seconds(ev.get_duration());
     match cadence {
+        Cadence::Secondly => (ev_start + Duration::seconds(1), ev_end + Duration::seconds(1)),
+        Cadence::Minutely => (ev_start + Duration::minutes(1), ev_end + Duration::minutes(1)),
         Cadence::Hourly => (ev_start + Duration::hours(1), ev_end + Duration::hours(1)),
         Cadence::Daily => (ev_start + Duration::days(1),ev_end + Duration::days(1)),
         Cadence::Weekly => (ev_start + Duration::weeks(1), ev_end + Duration::weeks(1)),
@@ -405,8 +411,34 @@ mod tests {
     }
 
     #[test]
-    /// Test recurrent events
-    fn test_recurrent() {
+    /// Test recurrent events (secondly)
+    fn test_recurrent_secondly() {
+        // an event that repeats each second for 55 times
+        let ev_min = Event::new("test", "test", "xxx", "xxx", 1.0, None, Some("minutely 55"));
+        assert_eq!(
+            ev_min.get_recurrence(),
+            Some(&Recurrence {
+                cadence: Cadence::Minutely,
+                repetitions: 55})
+        );
+    }
+
+    #[test]
+    /// Test recurrent events (minutely)
+    fn test_recurrent_minutely() {
+        // an event that repeats each minute for 55 times
+        let ev_sec = Event::new("test", "test", "xxx", "xxx", 1.0, None, Some("secondly 55"));
+        assert_eq!(
+            ev_sec.get_recurrence(),
+            Some(&Recurrence {
+                cadence: Cadence::Secondly,
+                repetitions: 55})
+        );
+    }
+
+    #[test]
+    /// Test recurrent events (daily)
+    fn test_recurrent_daily() {
         // an event that repeats daily for 5 days
         let ev_daily = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("daily 5"));
         assert_eq!(
@@ -416,6 +448,11 @@ mod tests {
                 repetitions: 5
             })
         );
+    }
+
+    #[test]
+    /// Test recurrent events (weekly)
+    fn test_recurrent_weekly() {
         // an event that repeats weekly for 2 weeks
         let ev_weekly = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("Weekly 2"));
         assert_eq!(
@@ -425,6 +462,11 @@ mod tests {
                 repetitions: 2
             })
         );
+    }
+
+    #[test]
+    /// Test recurrent events (monthly)
+    fn test_recurrent_monthly() {
         // an event that repeats monthly for 12 months
         let ev_monthly = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("MONTHLY 12"));
         assert_eq!(
@@ -434,6 +476,11 @@ mod tests {
                 repetitions: 12
             })
         );
+    }
+
+    #[test]
+    /// Test recurrent events (invalid)
+    fn test_recurrent_bad() {
         // an event that does not repeat (badly formatted)
         let ev_bad_fmt = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("Monthly -1"));
         assert_eq!(ev_bad_fmt.get_recurrence(), None);
@@ -446,6 +493,11 @@ mod tests {
                 repetitions: 110
             })
         );
+    }
+
+    #[test]
+    /// Test recurrent events (0 repeats)
+    fn test_recurrent_zero() {
         // an events that repeats 0 times (does not repeat)
         let ev_zero_rep = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("daily 0"));
         assert_eq!(ev_zero_rep.get_recurrence(), None);

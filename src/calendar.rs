@@ -27,6 +27,14 @@ fn expand_recurrence(
     for i in 0..=rec.repetitions() {
         let x = NaiveDateTime::new(*dt, *tm);
         match rec.cadence() {
+            Cadence::Secondly => {
+                let dt_new = x + Duration::seconds(i as i64);
+                rec_dates.push((dt_new.date(), dt_new.time()));
+            }
+            Cadence::Minutely => {
+                let dt_new = x + Duration::minutes(i as i64);
+                rec_dates.push((dt_new.date(), dt_new.time()));
+            }
             Cadence::Hourly => {
                 let dt_new = x.checked_add_signed(Duration::hours(i as i64)).unwrap();
                 rec_dates.push((dt_new.date(), dt_new.time()));
