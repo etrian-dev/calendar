@@ -5,11 +5,11 @@ use std::{fs, path};
 
 use chrono::{Datelike, NaiveDateTime, Timelike};
 use clap::{ArgGroup, Args, Parser, Subcommand};
-use icalendar::parser::{unfold, read_calendar, Property, Component};
+use icalendar::parser::{read_calendar, unfold, Component, Property};
 
-use calendar_lib::calendar::Calendar;
-use calendar_lib::calendar_error::CalendarError;
-use calendar_lib::event::Event;
+use crate::calendar::Calendar;
+use crate::calendar_error::CalendarError;
+use crate::event::Event;
 
 use log::{error, info};
 
@@ -88,6 +88,15 @@ pub struct Add {
 pub struct Remove {
     /// The id of the event to be removed
     eid: Option<u64>,
+    #[clap(short, long)]
+    /// Delete all events starting at the given date
+    from: Option<String>,
+    #[clap(short, long)]
+    /// Delete all events until the given date
+    to: Option<String>,
+    #[clap(short, long)]
+    /// Filter function for events to be removed
+    filter: Option<String>,
     #[clap(short, long, action)]
     /// Removes all events in the calendar
     all: bool,
@@ -122,9 +131,7 @@ pub struct CalParams {
     owner: Option<String>,
 }
 
-fn ics_parse_date_time(
-    prop: &Property,
-) -> (chrono::NaiveDate, chrono::NaiveTime) {
+fn ics_parse_date_time(prop: &Property) -> (chrono::NaiveDate, chrono::NaiveTime) {
     let dt = NaiveDateTime::parse_from_str(prop.val.as_str(), "%Y%m%dT%H%M%SZ")
         .expect("Failed to parse the DTSTART field");
     (dt.date(), dt.time())
@@ -153,8 +160,10 @@ fn match_property(ev: &mut Event, comp: Component) {
                 for param in prop.val.as_str().split(';') {
                     let x: Vec<&str> = param.splitn(2, '=').collect();
                     match x[0] {
+                        // See https://icalendar.org/iCalendar-RFC-5545/3-3-10-recurrence-rule.html
                         "FREQ" => rec = x[1].to_owned() + " " + &rec,
-                        "COUNT" => rec.push_str(x[1]),
+                        "COUNT" => rec.push_str(&(x[1].to_owned() + " ")),
+                        "INTERVAL" => rec.push_str(&(x[1].to_owned() + " ")),
                         _ => (),
                     }
                 }
@@ -290,29 +299,36 @@ pub fn handle_list(cal: &Calendar, x: Filter) -> bool {
 }
 
 pub fn handle_remove(cal: &mut Calendar, x: Remove) -> bool {
-    if x.all {
-        let calsize = cal.get_size();
-        cal.clear();
-        println!(
-            "Calendar {} cleared ({} events removed)",
-            cal.get_name(),
-            calsize
-        );
-        return true;
-    }
-    if let Some(eid) = x.eid {
-        match cal.remove_event(eid) {
-            Ok(ev) => {
-                println!("Event \n{ev}\nremoved successfully");
-                return true;
+    if x.all {}
+    match x {
+        Remove { all: true, .. } => {
+            let calsize = cal.get_size();
+            cal.clear();
+            println!(
+                "Calendar {} cleared ({} events removed)",
+                cal.get_name(),
+                calsize
+            );
+            true
+        },
+        Remove { eid: Some(eid), from: None, to: None, filter: None, all:false} => {
+            match cal.remove_event(eid) {
+                Ok(ev) => {
+                    println!("Event \n{ev}\nremoved successfully");
+                    true
+                }
+                Err(e) => {
+                    error!("Failed to remove event {}: {e}", eid);
+                    false
+                }
             }
-            Err(e) => {
-                error!("Failed to remove event {}: {e}", eid);
-                return false;
-            }
+        },
+        // TODO: implement other filters
+        _ => {
+            error!("Unknown remotion filter");
+            false
         }
     }
-    true
 }
 
 pub fn handle_params(cal: &mut Calendar, params: CalParams) -> bool {

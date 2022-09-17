@@ -1,5 +1,6 @@
 use std::fmt;
 use std::fmt::{Debug, Display};
+use std::io::Error;
 
 pub enum CalendarError {
     CalendarNotFound(String),
@@ -26,5 +27,11 @@ impl Debug for CalendarError {
             CalendarError::EventNotFound(eid) => write!(f, "Event {} not found!", eid),
             CalendarError::IcsParsingFailed(file) => write!(f, "Failed parsing {file}"),
         }
+    }
+}
+impl From<Error> for CalendarError {
+    fn from(e: Error) -> Self {
+        CalendarError::CalendarNotFound(
+            format!("Calendar not found: {}", e.to_string()))
     }
 }

@@ -52,6 +52,7 @@ impl FromStr for Cadence {
 pub struct Recurrence {
     cadence: Cadence,
     repetitions: usize,
+    interval: Option<usize>,
 }
 
 impl Recurrence {
@@ -61,6 +62,20 @@ impl Recurrence {
 
     pub fn repetitions(&self) -> usize {
         self.repetitions
+    }
+
+    pub fn interval(&self) -> Option<usize> {
+        self.interval
+    }
+}
+
+impl Default for Recurrence {
+    fn default() -> Self {
+        Recurrence {
+            cadence: Cadence::Weekly,
+            repetitions: 0,
+            interval: None,
+        }
     }
 }
 
@@ -90,18 +105,20 @@ fn parse_recurrence(s: &str) -> Option<Recurrence> {
     match (
         Cadence::from_str(components[0]),
         components[1].parse::<usize>(),
+        components[2].parse::<usize>(),
     ) {
-        (Ok(c), Ok(n)) => {
+        (Ok(c), Ok(n), interv) => {
             if n == 0 {
                 None
             } else {
                 Some(Recurrence {
                     cadence: c,
                     repetitions: n,
+                    interval: if let Ok(i) = interv { Some(i) } else { None },
                 })
             }
         }
-        (_, _) => None,
+        (_, _, _) => None,
     }
 }
 
@@ -419,7 +436,8 @@ mod tests {
             ev_min.get_recurrence(),
             Some(&Recurrence {
                 cadence: Cadence::Minutely,
-                repetitions: 55})
+                repetitions: 55,
+                ..Recurrence::default()})
         );
     }
 
@@ -432,7 +450,8 @@ mod tests {
             ev_sec.get_recurrence(),
             Some(&Recurrence {
                 cadence: Cadence::Secondly,
-                repetitions: 55})
+                repetitions: 55,
+                ..Recurrence::default()})
         );
     }
 
@@ -445,7 +464,8 @@ mod tests {
             ev_daily.get_recurrence(),
             Some(&Recurrence {
                 cadence: Cadence::Daily,
-                repetitions: 5
+                repetitions: 5,
+                ..Recurrence::default()
             })
         );
     }
@@ -459,7 +479,8 @@ mod tests {
             ev_weekly.get_recurrence(),
             Some(&Recurrence {
                 cadence: Cadence::Weekly,
-                repetitions: 2
+                repetitions: 2,
+                ..Recurrence::default()
             })
         );
     }
@@ -473,7 +494,8 @@ mod tests {
             ev_monthly.get_recurrence(),
             Some(&Recurrence {
                 cadence: Cadence::Monthly,
-                repetitions: 12
+                repetitions: 12,
+                ..Recurrence::default()
             })
         );
     }
@@ -490,7 +512,8 @@ mod tests {
             ev_yearly.get_recurrence(),
             Some(&Recurrence {
                 cadence: Cadence::Yearly,
-                repetitions: 110
+                repetitions: 110,
+                ..Recurrence::default()
             })
         );
     }

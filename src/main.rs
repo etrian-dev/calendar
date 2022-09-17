@@ -1,21 +1,19 @@
-mod cli;
-
-use calendar_lib::calendar_error::CalendarError;
 use log::{error, warn};
-
-use calendar_lib::calendar::Calendar;
-use crate::cli::{Cli, Commands};
-
 use std::fs::{self, File};
 use std::io::BufReader;
 use std::io::BufWriter;
 use std::path::Path;
 use std::result::Result;
+use std::env;
+
+use calendar_lib::calendar_error::CalendarError;
+use calendar_lib::cli::{self, Cli, Commands};
+use calendar_lib::calendar::Calendar;
 
 fn read_calendar(p: &Path) -> Result<Calendar, CalendarError> {
     let p2 = &p.with_extension("json");
     if Path::exists(p2) {
-        let f = File::open(p2).unwrap();
+        let f = File::open(p2)?;
         let reader = BufReader::new(f);
         if let Ok(cal) = serde_json::from_reader(reader) {
             return Ok(cal);
@@ -34,7 +32,7 @@ fn write_calendar(cal: &Calendar, p: &Path) -> bool {
 
 fn create_cal(calname: &str, p: &Path) -> Result<Calendar, CalendarError> {
     let cal_file = p.join(calname).with_extension("json");
-    let dir_iter = fs::read_dir(p).unwrap();
+    let dir_iter = fs::read_dir(p)?;
 
     for entry in dir_iter.flatten() {
         if entry.path() == cal_file {
@@ -47,7 +45,8 @@ fn create_cal(calname: &str, p: &Path) -> Result<Calendar, CalendarError> {
 
 fn delete_cal(calname: &str, p: &Path) -> bool {
     let cal_file = p.join(calname).with_extension("json");
-    let dir_iter = fs::read_dir(p).unwrap();
+    let dir_iter = fs::read_dir(p)
+        .expect(&format!("Calendar not found: {}", cal_file.display()));
     for entry in dir_iter.flatten() {
         if entry.path() == cal_file {
             return fs::remove_file(entry.path()).is_ok();
@@ -94,7 +93,8 @@ fn main() {
 
     let args = Cli::parse_cli();
 
-    let mut data_dir = std::env::current_dir().unwrap();
+    let mut data_dir = std::env::current_dir()
+        .expect("Cannot access the current directory");
     data_dir.push("data");
     if let Err(e) = fs::create_dir_all(data_dir.as_path()) {
         error!("Data directory creation failed: {e}");
@@ -107,7 +107,8 @@ fn main() {
             readonly = true;
             read_calendar(&data_dir.join(Path::new(&s)))
         }
-        cli::Cli { edit: Some(s), .. } => read_calendar(&data_dir.join(Path::new(&s))),
+        cli::Cli { edit: Some(s), .. } => 
+            read_calendar(&data_dir.join(Path::new(&s))),
         cli::Cli {
             create: Some(s), ..
         } => create_cal(&s, data_dir.as_path()),
@@ -121,24 +122,19 @@ fn main() {
             }
         }
         cli::Cli { list: true, .. } => {
-            list_calendars(data_dir.as_path());
             readonly = true;
+            list_calendars(data_dir.as_path());
+            // NOTE: this value is ignored
             Ok(Calendar::default())
         }
         _ => {
-            warn!(
-                "Unrecognized command or option: {}",
-                "TODO: implement error reporting"
-            );
-            Ok(Calendar::default())
+            let a: String = env::args().collect();
+            warn!("Unrecognized command or option: {}", a);
+            eprintln!("Unrecognized command or option: {}", a);
+            return;
         }
     };
-    if let Err(e) = res {
-        error!("{}", e);
-        return;
-    }
-    let mut cal = res.unwrap();
-
+    let mut cal = res.expect("Error opening the calendar");
     let result = match (args.subcommand, readonly) {
         (Some(Commands::Add(x)), false) => match cli::handle_add(&mut cal, x) {
             Ok(x) => x,
@@ -167,5 +163,6 @@ fn main() {
         )
     {
         warn!("Cannot write calendar {} to {}", cal, data_dir.display());
+        eprintln!("Cannot write calendar {} to {}", cal, data_dir.display());
     }
 }
