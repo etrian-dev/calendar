@@ -20,19 +20,9 @@ pub enum Cadence {
     Yearly,
 }
 
-pub enum ParseCadenceError {
-    Unrecognized(String),
-}
-impl Display for ParseCadenceError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmtResult {
-        match self {
-            ParseCadenceError::Unrecognized(s) => write!(f, "{} cannot be parsed as a Cadence", s),
-        }
-    }
-}
 
 impl FromStr for Cadence {
-    type Err = ParseCadenceError;
+    type Err = ParseRecurrenceError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
@@ -43,10 +33,24 @@ impl FromStr for Cadence {
             "weekly" => Ok(Cadence::Weekly),
             "monthly" => Ok(Cadence::Monthly),
             "yearly" => Ok(Cadence::Yearly),
-            _ => Err(ParseCadenceError::Unrecognized(s.to_string())),
+            _ => Err(ParseRecurrenceError::UnknownCadence(s.to_string())),
         }
     }
 }
+
+pub enum ParseRecurrenceError {
+    UnknownCadence(String),
+    BadFormat(String),
+}
+impl Display for ParseRecurrenceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmtResult {
+        match self {
+            Self::UnknownCadence(s) => write!(f, "{} cannot be parsed as a Cadence", s),
+            Self::BadFormat(s) => write!(f, "Failed to parse recurrence {}", s),
+        }
+    }
+}
+
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct Recurrence {
@@ -66,6 +70,18 @@ impl Recurrence {
 
     pub fn interval(&self) -> Option<usize> {
         self.interval
+    }
+
+    pub fn set_cadence(&mut self, new_cad: Cadence) {
+        self.cadence = new_cad;
+    }
+
+    pub fn set_repetitions(&mut self, new_repeat: usize) {
+        self.repetitions = new_repeat;
+    }
+
+    pub fn set_interval(&mut self, new_interval: Option<usize>) {
+        self.interval = new_interval;
     }
 }
 
@@ -99,26 +115,32 @@ where
 
 fn parse_recurrence(s: &str) -> Option<Recurrence> {
     let components: Vec<&str> = s.split_ascii_whitespace().collect();
-    if components.len() != 2 {
+    if components.len() < 2 || components.len() > 3 {
         return None;
     }
-    match (
-        Cadence::from_str(components[0]),
-        components[1].parse::<usize>(),
-        components[2].parse::<usize>(),
-    ) {
-        (Ok(c), Ok(n), interv) => {
-            if n == 0 {
-                None
-            } else {
-                Some(Recurrence {
-                    cadence: c,
-                    repetitions: n,
-                    interval: if let Ok(i) = interv { Some(i) } else { None },
-                })
-            }
+    // Parse optional interval parameter
+    let mut interv = None;
+    if components.len() == 3 {
+        if let Ok(val) = components[2].parse::<usize>() {
+            interv = Some(val);
         }
-        (_, _, _) => None,
+    }
+    let cad = Cadence::from_str(components[0]);
+    let repeat = components[1].parse::<usize>();
+    match (cad, repeat) {
+        (Ok(c), Ok(val)) => {
+            if val == 0 {
+                return None;
+            }
+            return Some(Recurrence {
+                cadence: c,
+                repetitions: val,
+                interval: interv,
+            });
+        }
+        (_,_) => {
+            return None;
+        }
     }
 }
 
@@ -133,7 +155,7 @@ pub fn next_occurrence(ev: &Event, cadence: &Cadence) -> (NaiveDateTime, NaiveDa
         Cadence::Weekly => (ev_start + Duration::weeks(1), ev_end + Duration::weeks(1)),
         Cadence::Monthly => {
             (NaiveDateTime::new(
-                ev_start.date() + Months::new(1), 
+                ev_start.date() + Months::new(1),
                 ev_start.time()),
             NaiveDateTime::new(
                 ev_end.date() + Months::new(1),
@@ -142,7 +164,7 @@ pub fn next_occurrence(ev: &Event, cadence: &Cadence) -> (NaiveDateTime, NaiveDa
         }
         Cadence::Yearly => {
             (NaiveDateTime::new(
-                ev_start.date() + Months::new(12), 
+                ev_start.date() + Months::new(12),
                 ev_start.time()),
             NaiveDateTime::new(
                 ev_end.date() + Months::new(12),
