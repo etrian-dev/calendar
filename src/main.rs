@@ -127,6 +127,12 @@ fn main() {
             // NOTE: this value is ignored
             Ok(Calendar::default())
         }
+        cli::Cli { subcommand: Some(_), list: false, .. } => {
+            // FIXME: maybe use the default calendar and allow only reads on it
+           warn!("Unspecified calendar: aborting.");
+           eprintln!("Unspecified calendar: aborting.");
+           return;
+		}
         _ => {
             let a: String = env::args().collect();
             warn!("Unrecognized command or option: {}", a);
@@ -148,7 +154,11 @@ fn main() {
         (Some(Commands::Set(params)), false) => cli::handle_params(&mut cal, params),
         (Some(_), true) => {
             warn!(
-                "Calendar {} cannot be modified! (rerun without --view)",
+                "Calendar {} cannot be modified! (rerun with --edit)",
+                cal.get_name()
+            );
+            eprintln!(
+				"Calendar {} cannot be modified! (rerun with --edit)",
                 cal.get_name()
             );
             false
