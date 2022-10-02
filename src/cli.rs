@@ -1,17 +1,21 @@
 use std::ffi::OsStr;
+use std::env;
 use std::io::Read;
+use std::io::BufReader;
+use std::io::BufWriter;
+use std::fs::{self, File};
 use std::result::Result;
-use std::{fs, path};
+use std::path::Path;
 
 use chrono::{Datelike, NaiveDateTime, Timelike};
 use clap::{ArgGroup, Args, Parser, Subcommand};
-use icalendar::parser::{read_calendar, unfold, Component, Property};
+use icalendar::parser::{Component, Property};
 
 use crate::calendar::Calendar;
 use crate::calendar_error::CalendarError;
 use crate::event::Event;
 
-use log::{error, info};
+use log::{error, info, warn};
 
 /// Simple calendar program
 #[derive(Parser)]
@@ -37,10 +41,141 @@ pub struct Cli {
     pub list: bool,
 }
 
+fn read_calendar(p: &Path) -> Result<Calendar, CalendarError> {
+    let p2 = &p.with_extension("json");
+    if Path::exists(p2) {
+        let f = File::open(p2)?;
+        let reader = BufReader::new(f);
+        if let Ok(cal) = serde_json::from_reader(reader) {
+            return Ok(cal);
+        }
+    }
+    Err(CalendarError::CalendarNotFound(
+        p2.to_string_lossy().to_string(),
+    ))
+}
+
+
+
+fn create_calendar(calname: &str, p: &Path) -> Result<Calendar, CalendarError> {
+    let cal_file = p.join(calname).with_extension("json");
+    let dir_iter = fs::read_dir(p)?;
+
+    for entry in dir_iter.flatten() {
+        if entry.path() == cal_file {
+            return Err(CalendarError::CalendarAlreadyExists(calname.to_string()));
+        }
+    }
+    // FIXME: currently setting the owner is unsupported
+    Ok(Calendar::new("", calname))
+}
+
+fn delete_calendar(calname: &str, p: &Path) -> bool {
+    let cal_file = p.join(calname).with_extension("json");
+    let dir_iter = fs::read_dir(p)
+        .expect(&format!("Calendar not found: {}", cal_file.display()));
+    for entry in dir_iter.flatten() {
+        if entry.path() == cal_file {
+            return fs::remove_file(entry.path()).is_ok();
+        }
+    }
+    false
+}
+
+fn list_calendars(p: &Path) {
+    let mut known_cals = Vec::new();
+    let dir_iter = fs::read_dir(p).unwrap();
+    for ent in dir_iter.flatten() {
+        let p = ent.path();
+        let ext = p.extension();
+        let stem = p.file_stem().unwrap();
+        if let Some(s) = ext {
+            if s.eq("json") {
+                known_cals.push((read_calendar(&p.with_file_name(stem)), p.clone()));
+            }
+        }
+    }
+    println!("Known calendars: ");
+    for cal in known_cals {
+        if let (Ok(cal), path) = cal {
+            println!(
+                "{} (owned by {}) @ {}",
+                cal.get_name(),
+                if cal.get_owner().is_empty() {
+                    "<unknown>"
+                } else {
+                    cal.get_owner()
+                },
+                path.display()
+            );
+        } else {
+            eprintln!("Error for calendar!");
+        }
+    }
+
+    
+}
+
+pub fn save_calendar(cal: &Calendar, p: &Path) -> bool {
+    let f = File::create(p).unwrap();
+    let writer = BufWriter::new(f);
+    serde_json::to_writer_pretty(writer, cal).is_ok()
+}
+
 impl Cli {
+
     pub fn parse_cli() -> Cli {
         Cli::parse()
     }
+
+    
+    pub fn exec_commands(args: &Cli, data_dir: &Path) -> (bool, Result<Option<Calendar>, CalendarError>) {
+        let mut readonly = false;
+        let res = match args {
+            Cli { view: Some(s), .. } 
+            | Cli { edit: Some(s), .. } => {
+                if let None = args.edit {
+                    readonly = true;
+                }
+                read_calendar(&data_dir.join(Path::new(&s)))
+                    .and_then(|c| Ok(Some(c)))
+            }
+            Cli {
+                create: Some(s), ..
+            } => create_calendar(&s, data_dir)
+                    .and_then(|c| Ok(Some(c))),
+            Cli {
+                delete: Some(s), ..
+            } => {
+                if delete_calendar(&s, data_dir) {
+                    Ok(None)
+                } else {
+                    Err(CalendarError::CalendarNotFound(s.to_string()))
+                }
+            }
+            Cli { list: true, .. } => {
+                readonly = true;
+                list_calendars(data_dir);
+                // NOTE: this value is ignored
+                Ok(None)
+            }
+            Cli { subcommand: Some(_), list: false, .. } => {
+                // FIXME: maybe use the default calendar and allow only reads on it
+               warn!("Unspecified calendar: aborting.");
+               //eprintln!("Unspecified calendar: aborting.");
+               Err(CalendarError::CalendarNotFound("Unspecified calendar: aborting.".to_string()))
+            }
+            _ => {
+                let a: String = env::args().collect();
+                warn!("Unrecognized command or option: {}", a);
+                //eprintln!("Unrecognized command or option: {}", a);
+                Err(CalendarError::Unknown(format!("Unrecognized command or option: {a}")))
+            }
+        };
+        (readonly, res)
+    }
+
+
 }
 
 #[derive(Subcommand)]
@@ -176,7 +311,7 @@ fn match_property(ev: &mut Event, comp: Component) {
 }
 
 fn handle_ics(fpath: &str) -> Result<Vec<Event>, String> {
-    let path = path::Path::new(fpath);
+    let path = Path::new(fpath);
     if path.exists() && path.extension().unwrap_or(OsStr::new("ics")) == "ics" {
         let ics_file = fs::File::open(path);
         if let Err(e) = ics_file {
@@ -187,8 +322,8 @@ fn handle_ics(fpath: &str) -> Result<Vec<Event>, String> {
             return Err(format!("Cannot read ics file: {}", e));
         } else {
             // File read into the buf String: parse it with the iCalendar library
-            let str_unfolded = unfold(&buf);
-            return match read_calendar(&str_unfolded) {
+            let str_unfolded = icalendar::parser::unfold(&buf);
+            return match icalendar::parser::read_calendar(&str_unfolded) {
                 Ok(cal) => {
                     let mut events = Vec::new();
                     for comp in cal.components {
