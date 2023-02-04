@@ -1,4 +1,4 @@
-use chrono::{Duration, Local, NaiveDate, NaiveTime, NaiveDateTime, Months};
+use chrono::{DateTime, Duration, Local, Months, NaiveDate, NaiveDateTime, NaiveTime};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::Result as fmtResult;
 use std::fmt::{Debug, Display};
@@ -19,7 +19,6 @@ pub enum Cadence {
     Monthly,
     Yearly,
 }
-
 
 impl FromStr for Cadence {
     type Err = ParseRecurrenceError;
@@ -50,7 +49,6 @@ impl Display for ParseRecurrenceError {
         }
     }
 }
-
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct Recurrence {
@@ -138,7 +136,7 @@ fn parse_recurrence(s: &str) -> Option<Recurrence> {
                 interval: interv,
             });
         }
-        (_,_) => {
+        (_, _) => {
             return None;
         }
     }
@@ -148,29 +146,52 @@ pub fn next_occurrence(ev: &Event, cadence: &Cadence) -> (NaiveDateTime, NaiveDa
     let ev_start = ev.get_start_date().and_time(ev.get_start_time());
     let ev_end = ev_start + Duration::seconds(ev.get_duration());
     match cadence {
-        Cadence::Secondly => (ev_start + Duration::seconds(1), ev_end + Duration::seconds(1)),
-        Cadence::Minutely => (ev_start + Duration::minutes(1), ev_end + Duration::minutes(1)),
+        Cadence::Secondly => (
+            ev_start + Duration::seconds(1),
+            ev_end + Duration::seconds(1),
+        ),
+        Cadence::Minutely => (
+            ev_start + Duration::minutes(1),
+            ev_end + Duration::minutes(1),
+        ),
         Cadence::Hourly => (ev_start + Duration::hours(1), ev_end + Duration::hours(1)),
-        Cadence::Daily => (ev_start + Duration::days(1),ev_end + Duration::days(1)),
+        Cadence::Daily => (ev_start + Duration::days(1), ev_end + Duration::days(1)),
         Cadence::Weekly => (ev_start + Duration::weeks(1), ev_end + Duration::weeks(1)),
-        Cadence::Monthly => {
-            (NaiveDateTime::new(
-                ev_start.date() + Months::new(1),
-                ev_start.time()),
-            NaiveDateTime::new(
-                ev_end.date() + Months::new(1),
-                ev_end.time()
-            ))
+        Cadence::Monthly => (
+            NaiveDateTime::new(ev_start.date() + Months::new(1), ev_start.time()),
+            NaiveDateTime::new(ev_end.date() + Months::new(1), ev_end.time()),
+        ),
+        Cadence::Yearly => (
+            NaiveDateTime::new(ev_start.date() + Months::new(12), ev_start.time()),
+            NaiveDateTime::new(ev_end.date() + Months::new(12), ev_end.time()),
+        ),
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+pub struct EventMetadata {
+    tags: Vec<String>,
+    creation: DateTime<Local>,
+}
+
+impl Default for EventMetadata {
+    fn default() -> Self {
+        EventMetadata {
+            tags: Vec::default(),
+            creation: Local::now(),
         }
-        Cadence::Yearly => {
-            (NaiveDateTime::new(
-                ev_start.date() + Months::new(12),
-                ev_start.time()),
-            NaiveDateTime::new(
-                ev_end.date() + Months::new(12),
-                ev_end.time()
-            ))
-        }
+    }
+}
+
+impl EventMetadata {
+    pub fn set_tags(&mut self, tags: Vec<String>) {
+        self.tags = tags
+    }
+    pub fn get_tags(&self) -> Vec<String> {
+        self.tags.clone()
+    }
+    pub fn get_creation(&self) -> DateTime<Local> {
+        self.creation
     }
 }
 
@@ -185,6 +206,7 @@ pub struct Event {
     duration: Duration,
     location: String,
     recurrence: Option<Recurrence>,
+    metadata: EventMetadata,
 }
 
 impl Event {
@@ -196,6 +218,7 @@ impl Event {
         dur: f32,
         location: Option<&str>,
         recurr: Option<&str>,
+        tags: Option<Vec<String>>,
     ) -> Event {
         let date_formats = vec!["%d/%m/%Y", "%Y-%m-%d"];
         let mut date = Err(());
@@ -249,10 +272,15 @@ impl Event {
                 Some(val) => parse_recurrence(val),
                 None => None,
             },
+            metadata: match tags {
+                Some(t) => EventMetadata {
+                    tags: t,
+                    creation: Local::now(),
+                },
+                None => EventMetadata::default(),
+            },
         }
     }
-
-
 
     pub fn overlaps(&self, other: &Event) -> bool {
         let self_start = self.start_date.and_time(self.start_time);
@@ -280,7 +308,7 @@ impl Event {
                 let cad = rec.cadence();
                 let cnt = rec.repetitions;
                 for _ in 0..cnt {
-                    let (new_start, new_end)= next_occurrence(&other, cad);
+                    let (new_start, new_end) = next_occurrence(&other, cad);
                     overlap = new_start <= self_end && new_end >= self_start;
                     if overlap {
                         return overlap;
@@ -339,6 +367,10 @@ impl Event {
     pub fn get_recurrence(&self) -> Option<&Recurrence> {
         self.recurrence.as_ref()
     }
+
+    pub fn get_metadata(&self) -> EventMetadata {
+        self.metadata.clone()
+    }
 }
 
 impl Default for Event {
@@ -352,6 +384,7 @@ impl Default for Event {
             duration: Duration::zero(),
             location: String::from(""),
             recurrence: None,
+            metadata: EventMetadata::default(),
         }
     }
 }
@@ -409,6 +442,7 @@ mod tests {
             dur,
             Some(loc.as_str()),
             None,
+            None,
         );
         let mut e2 = Event::default();
         assert_ne!(e1.title, e2.title);
@@ -438,7 +472,7 @@ mod tests {
         let test_time = "16:10";
         let fmt_date = "%d/%m/%Y";
         let fmt_time = "%H:%M";
-        let dmy_hm = Event::new("test", "test", test_date, test_time, 1.0, None, None);
+        let dmy_hm = Event::new("test", "test", test_date, test_time, 1.0, None, None, None);
         assert_eq!(
             dmy_hm.get_start_date(),
             chrono::NaiveDate::parse_from_str(test_date, fmt_date).unwrap()
@@ -453,13 +487,23 @@ mod tests {
     /// Test recurrent events (secondly)
     fn test_recurrent_secondly() {
         // an event that repeats each second for 55 times
-        let ev_min = Event::new("test", "test", "xxx", "xxx", 1.0, None, Some("minutely 55"));
+        let ev_min = Event::new(
+            "test",
+            "test",
+            "xxx",
+            "xxx",
+            1.0,
+            None,
+            Some("minutely 55"),
+            None,
+        );
         assert_eq!(
             ev_min.get_recurrence(),
             Some(&Recurrence {
                 cadence: Cadence::Minutely,
                 repetitions: 55,
-                ..Recurrence::default()})
+                ..Recurrence::default()
+            })
         );
     }
 
@@ -467,13 +511,23 @@ mod tests {
     /// Test recurrent events (minutely)
     fn test_recurrent_minutely() {
         // an event that repeats each minute for 55 times
-        let ev_sec = Event::new("test", "test", "xxx", "xxx", 1.0, None, Some("secondly 55"));
+        let ev_sec = Event::new(
+            "test",
+            "test",
+            "xxx",
+            "xxx",
+            1.0,
+            None,
+            Some("secondly 55"),
+            None,
+        );
         assert_eq!(
             ev_sec.get_recurrence(),
             Some(&Recurrence {
                 cadence: Cadence::Secondly,
                 repetitions: 55,
-                ..Recurrence::default()})
+                ..Recurrence::default()
+            })
         );
     }
 
@@ -481,7 +535,16 @@ mod tests {
     /// Test recurrent events (daily)
     fn test_recurrent_daily() {
         // an event that repeats daily for 5 days
-        let ev_daily = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("daily 5"));
+        let ev_daily = Event::new(
+            "test",
+            "test",
+            "xxx",
+            "yyy",
+            1.0,
+            None,
+            Some("daily 5"),
+            None,
+        );
         assert_eq!(
             ev_daily.get_recurrence(),
             Some(&Recurrence {
@@ -496,7 +559,16 @@ mod tests {
     /// Test recurrent events (weekly)
     fn test_recurrent_weekly() {
         // an event that repeats weekly for 2 weeks
-        let ev_weekly = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("Weekly 2"));
+        let ev_weekly = Event::new(
+            "test",
+            "test",
+            "xxx",
+            "yyy",
+            1.0,
+            None,
+            Some("Weekly 2"),
+            None,
+        );
         assert_eq!(
             ev_weekly.get_recurrence(),
             Some(&Recurrence {
@@ -511,7 +583,16 @@ mod tests {
     /// Test recurrent events (monthly)
     fn test_recurrent_monthly() {
         // an event that repeats monthly for 12 months
-        let ev_monthly = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("MONTHLY 12"));
+        let ev_monthly = Event::new(
+            "test",
+            "test",
+            "xxx",
+            "yyy",
+            1.0,
+            None,
+            Some("MONTHLY 12"),
+            None,
+        );
         assert_eq!(
             ev_monthly.get_recurrence(),
             Some(&Recurrence {
@@ -526,10 +607,28 @@ mod tests {
     /// Test recurrent events (invalid)
     fn test_recurrent_bad() {
         // an event that does not repeat (badly formatted)
-        let ev_bad_fmt = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("Monthly -1"));
+        let ev_bad_fmt = Event::new(
+            "test",
+            "test",
+            "xxx",
+            "yyy",
+            1.0,
+            None,
+            Some("Monthly -1"),
+            None,
+        );
         assert_eq!(ev_bad_fmt.get_recurrence(), None);
         // an event that repeats yearly for 110 years
-        let ev_yearly = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("YearLY 110"));
+        let ev_yearly = Event::new(
+            "test",
+            "test",
+            "xxx",
+            "yyy",
+            1.0,
+            None,
+            Some("YearLY 110"),
+            None,
+        );
         assert_eq!(
             ev_yearly.get_recurrence(),
             Some(&Recurrence {
@@ -544,7 +643,16 @@ mod tests {
     /// Test recurrent events (0 repeats)
     fn test_recurrent_zero() {
         // an events that repeats 0 times (does not repeat)
-        let ev_zero_rep = Event::new("test", "test", "xxx", "yyy", 1.0, None, Some("daily 0"));
+        let ev_zero_rep = Event::new(
+            "test",
+            "test",
+            "xxx",
+            "yyy",
+            1.0,
+            None,
+            Some("daily 0"),
+            None,
+        );
         assert_eq!(ev_zero_rep.get_recurrence(), None);
     }
 }

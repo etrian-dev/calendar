@@ -1,11 +1,11 @@
-use std::ffi::OsStr;
 use std::env;
-use std::io::Read;
+use std::ffi::OsStr;
+use std::fs::{self, File};
 use std::io::BufReader;
 use std::io::BufWriter;
-use std::fs::{self, File};
-use std::result::Result;
+use std::io::Read;
 use std::path::Path;
+use std::result::Result;
 
 use chrono::{Datelike, NaiveDateTime, Timelike};
 use clap::{ArgGroup, Args, Parser, Subcommand};
@@ -37,7 +37,7 @@ pub struct Cli {
     #[clap(short, long)]
     pub delete: Option<String>,
     /// List all known calendars
-    #[clap(short, long, action)]
+    #[clap(short, long)]
     pub list: bool,
 }
 
@@ -55,8 +55,6 @@ fn read_calendar(p: &Path) -> Result<Calendar, CalendarError> {
     ))
 }
 
-
-
 fn create_calendar(calname: &str, p: &Path) -> Result<Calendar, CalendarError> {
     let cal_file = p.join(calname).with_extension("json");
     let dir_iter = fs::read_dir(p)?;
@@ -72,8 +70,7 @@ fn create_calendar(calname: &str, p: &Path) -> Result<Calendar, CalendarError> {
 
 fn delete_calendar(calname: &str, p: &Path) -> bool {
     let cal_file = p.join(calname).with_extension("json");
-    let dir_iter = fs::read_dir(p)
-        .expect(&format!("Calendar not found: {}", cal_file.display()));
+    let dir_iter = fs::read_dir(p).expect(&format!("Calendar not found: {}", cal_file.display()));
     for entry in dir_iter.flatten() {
         if entry.path() == cal_file {
             return fs::remove_file(entry.path()).is_ok();
@@ -112,8 +109,6 @@ fn list_calendars(p: &Path) {
             eprintln!("Error for calendar!");
         }
     }
-
-    
 }
 
 pub fn save_calendar(cal: &Calendar, p: &Path) -> bool {
@@ -123,31 +118,29 @@ pub fn save_calendar(cal: &Calendar, p: &Path) -> bool {
 }
 
 impl Cli {
-
     pub fn parse_cli() -> Cli {
         Cli::parse()
     }
 
-    
-    pub fn exec_commands(args: &Cli, data_dir: &Path) -> (bool, Result<Option<Calendar>, CalendarError>) {
+    pub fn exec_commands(
+        args: &Cli,
+        data_dir: &Path,
+    ) -> (bool, Result<Option<Calendar>, CalendarError>) {
         let mut readonly = false;
         let res = match args {
-            Cli { view: Some(s), .. } 
-            | Cli { edit: Some(s), .. } => {
-                if let None = args.edit {
+            Cli { view: Some(s), .. } | Cli { edit: Some(s), .. } => {
+                if args.edit.is_none() {
                     readonly = true;
                 }
-                read_calendar(&data_dir.join(Path::new(&s)))
-                    .and_then(|c| Ok(Some(c)))
+                read_calendar(&data_dir.join(Path::new(&s))).and_then(|c| Ok(Some(c)))
             }
             Cli {
                 create: Some(s), ..
-            } => create_calendar(&s, data_dir)
-                    .and_then(|c| Ok(Some(c))),
+            } => create_calendar(s, data_dir).and_then(|c| Ok(Some(c))),
             Cli {
                 delete: Some(s), ..
             } => {
-                if delete_calendar(&s, data_dir) {
+                if delete_calendar(s, data_dir) {
                     Ok(None)
                 } else {
                     Err(CalendarError::CalendarNotFound(s.to_string()))
@@ -159,23 +152,29 @@ impl Cli {
                 // NOTE: this value is ignored
                 Ok(None)
             }
-            Cli { subcommand: Some(_), list: false, .. } => {
+            Cli {
+                subcommand: Some(_),
+                list: false,
+                ..
+            } => {
                 // FIXME: maybe use the default calendar and allow only reads on it
-               warn!("Unspecified calendar: aborting.");
-               //eprintln!("Unspecified calendar: aborting.");
-               Err(CalendarError::CalendarNotFound("Unspecified calendar: aborting.".to_string()))
+                warn!("Unspecified calendar: aborting.");
+                //eprintln!("Unspecified calendar: aborting.");
+                Err(CalendarError::CalendarNotFound(
+                    "Unspecified calendar: aborting.".to_string(),
+                ))
             }
             _ => {
                 let a: String = env::args().collect();
                 warn!("Unrecognized command or option: {}", a);
                 //eprintln!("Unrecognized command or option: {}", a);
-                Err(CalendarError::Unknown(format!("Unrecognized command or option: {a}")))
+                Err(CalendarError::Unknown(format!(
+                    "Unrecognized command or option: {a}"
+                )))
             }
         };
         (readonly, res)
     }
-
-
 }
 
 #[derive(Subcommand)]
@@ -214,6 +213,9 @@ pub struct Add {
     #[clap(group = "input")]
     /// The event's recurrence
     recurrence: Option<String>,
+    #[clap(group = "input")]
+    // The event's tags
+    tags: Vec<String>,
     #[clap(long, group = "ics", conflicts_with = "input")]
     /// Load the event to be added from an .ics file (iCalendar format)
     from_file: Option<String>,
@@ -232,7 +234,7 @@ pub struct Remove {
     #[clap(short, long)]
     /// Filter function for events to be removed
     filter: Option<String>,
-    #[clap(short, long, action)]
+    #[clap(short, long)]
     /// Removes all events in the calendar
     all: bool,
 }
@@ -254,6 +256,9 @@ pub struct Filter {
     /// filters events until the given date
     #[clap(long)]
     until: Option<String>,
+    /// filters by tag
+    #[clap(long)]
+    tag: Option<String>,
 }
 
 #[derive(Args)]
@@ -394,6 +399,12 @@ pub fn handle_add(cal: &mut Calendar, x: Add) -> Result<bool, CalendarError> {
         let loc = x.location.as_deref();
         let rec = x.recurrence.as_deref();
 
+        let tags = if !x.tags.is_empty() {
+            Some(x.tags)
+        } else {
+            None
+        };
+
         let ev = Event::new(
             &title,
             &description,
@@ -402,6 +413,7 @@ pub fn handle_add(cal: &mut Calendar, x: Add) -> Result<bool, CalendarError> {
             duration,
             loc,
             rec,
+            tags,
         );
         Ok(cal.add_event(ev))
     }
@@ -412,12 +424,14 @@ pub fn handle_list(cal: &Calendar, x: Filter) -> bool {
         Filter { today: true, .. } => cal.list_events_today(),
         Filter { week: true, .. } => cal.list_events_week(),
         Filter { month: true, .. } => cal.list_events_month(),
+        Filter { tag: Some(tag), .. } => cal.list_events_tagged(tag),
         Filter {
             today: false,
             week: false,
             month: false,
             from: None,
             until: None,
+            tag: None,
         } => {
             let today = format!("{}", chrono::Local::today().format("%d/%m/%Y"));
             cal.list_events_between(Some(today), None)
@@ -445,17 +459,21 @@ pub fn handle_remove(cal: &mut Calendar, x: Remove) -> bool {
                 calsize
             );
             true
-        },
-        Remove { eid: Some(eid), from: None, to: None, filter: None, all:false} => {
-            match cal.remove_event(eid) {
-                Ok(ev) => {
-                    println!("Event \n{ev}\nremoved successfully");
-                    true
-                }
-                Err(e) => {
-                    error!("Failed to remove event {}: {e}", eid);
-                    false
-                }
+        }
+        Remove {
+            eid: Some(eid),
+            from: None,
+            to: None,
+            filter: None,
+            all: false,
+        } => match cal.remove_event(eid) {
+            Ok(ev) => {
+                println!("Event \n{ev}\nremoved successfully");
+                true
+            }
+            Err(e) => {
+                error!("Failed to remove event {}: {e}", eid);
+                false
             }
         },
         // TODO: implement other filters

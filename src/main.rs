@@ -1,17 +1,14 @@
 use log::{error, warn};
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
 use calendar_lib::cli::{self, Cli, Commands};
-
-
 
 fn main() {
     // Initialize logging
     env_logger::init();
 
-    let mut data_dir = std::env::current_dir()
-        .expect("Cannot access the current directory");
+    let mut data_dir = std::env::current_dir().expect("Cannot access the current directory");
     data_dir.push("data");
     if let Err(e) = fs::create_dir_all(data_dir.as_path()) {
         error!("Data directory creation failed: {e}");
@@ -20,9 +17,10 @@ fn main() {
 
     let args = Cli::parse_cli();
 
-    let (readonly, res) = cli::Cli::exec_commands(&args, &data_dir.as_path());
-    
-    let mut cal = res.expect("Error opening the calendar")
+    let (readonly, res) = cli::Cli::exec_commands(&args, data_dir.as_path());
+
+    let mut cal = res
+        .expect("Error opening the calendar")
         .expect("Missing calendar");
     let result = match (args.subcommand, readonly) {
         (Some(Commands::Add(x)), false) => match cli::handle_add(&mut cal, x) {
@@ -41,7 +39,7 @@ fn main() {
                 cal.get_name()
             );
             eprintln!(
-				"Calendar {} cannot be modified! (rerun with --edit)",
+                "Calendar {} cannot be modified! (rerun with --edit)",
                 cal.get_name()
             );
             false

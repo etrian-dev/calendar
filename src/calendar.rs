@@ -98,8 +98,14 @@ impl Calendar {
         ev.hash(&mut h);
         let ev_hash = h.finish();
         if self.events.contains_key(&ev_hash) {
-            warn!("Event with hash {} already in this calendar: calendar not modified", ev_hash);
-            eprintln!("Event \"{}\" already in this calendar: calendar not modified", ev.get_title());
+            warn!(
+                "Event with hash {} already in this calendar: calendar not modified",
+                ev_hash
+            );
+            eprintln!(
+                "Event \"{}\" already in this calendar: calendar not modified",
+                ev.get_title()
+            );
             return false;
         }
         // Warn the user if this event overlaps with some other event
@@ -107,8 +113,15 @@ impl Calendar {
             if e.overlaps(&ev) {
                 e.hash(&mut h);
                 let e_hash = h.finish();
-                warn!("Warning: the event {} overlaps with event {}", ev_hash, e_hash);
-                eprintln!("Warning: the event \"{}\" overlaps with event \"{}\"", ev.get_title(), e.get_title());
+                warn!(
+                    "Warning: the event {} overlaps with event {}",
+                    ev_hash, e_hash
+                );
+                eprintln!(
+                    "Warning: the event \"{}\" overlaps with event \"{}\"",
+                    ev.get_title(),
+                    e.get_title()
+                );
             }
         }
         self.events.insert(ev_hash, ev);
@@ -260,6 +273,17 @@ impl Calendar {
         });
         events_between
     }
+
+    pub fn list_events_tagged(&self, tag: String) -> Vec<Event> {
+        let mut filtered_events = Vec::new();
+        for ev in self.events.values() {
+            let ev_tags = ev.get_metadata().get_tags();
+            if ev_tags.contains(&tag) {
+                filtered_events.push(ev.clone());
+            }
+        }
+        filtered_events
+    }
 }
 
 impl Display for Calendar {
@@ -333,7 +357,7 @@ mod tests {
     fn test_event_multiple() {
         // defines some events
         let v = vec![
-            Event::new("title1", "desc1", "11/02/2001", "-", 3.6, None, None),
+            Event::new("title1", "desc1", "11/02/2001", "-", 3.6, None, None, None),
             Event::new(
                 "title2",
                 "desc2",
@@ -341,6 +365,7 @@ mod tests {
                 "-",
                 3.6,
                 Some("Some location"),
+                None,
                 None,
             ),
             Event::new(
@@ -351,10 +376,11 @@ mod tests {
                 3.6,
                 Some("Random loc"),
                 None,
+                None,
             ),
-            Event::new("title4", "desc4", "13/04/1999", "-", 3.6, None, None),
-            Event::new("title5", "desc5", "21/01/2021", "-", 3.6, None, None),
-            Event::new("title6", "desc6", "13/03/2001", "-", 3.6, None, None),
+            Event::new("title4", "desc4", "13/04/1999", "-", 3.6, None, None, None),
+            Event::new("title5", "desc5", "21/01/2021", "-", 3.6, None, None, None),
+            Event::new("title6", "desc6", "13/03/2001", "-", 3.6, None, None, None),
             Event::new(
                 "title7",
                 "desc7",
@@ -362,6 +388,7 @@ mod tests {
                 "-",
                 3.6,
                 Some("Pisa"),
+                None,
                 None,
             ),
         ];
@@ -411,6 +438,7 @@ mod tests {
                 1.0,
                 None,
                 None,
+                None,
             );
             cal.add_event(e);
         }
@@ -432,6 +460,7 @@ mod tests {
             4.2,
             Some("Somewhere"),
             None,
+            None,
         );
         assert_eq!(cal.events.len(), 0);
         cal.add_event(ev.clone());
@@ -451,7 +480,7 @@ mod tests {
     fn test_clear() {
         // defines some events
         let v = vec![
-            Event::new("title1", "desc1", "11/02/2001", "-", 3.6, None, None),
+            Event::new("title1", "desc1", "11/02/2001", "-", 3.6, None, None, None),
             Event::new(
                 "title2",
                 "desc2",
@@ -459,6 +488,7 @@ mod tests {
                 "-",
                 3.6,
                 Some("Some location"),
+                None,
                 None,
             ),
             Event::new(
@@ -469,10 +499,11 @@ mod tests {
                 3.6,
                 Some("Random loc"),
                 None,
+                None,
             ),
-            Event::new("title4", "desc4", "13/04/1999", "-", 3.6, None, None),
-            Event::new("title5", "desc5", "21/01/2021", "-", 3.6, None, None),
-            Event::new("title6", "desc6", "13/03/2001", "-", 3.6, None, None),
+            Event::new("title4", "desc4", "13/04/1999", "-", 3.6, None, None, None),
+            Event::new("title5", "desc5", "21/01/2021", "-", 3.6, None, None, None),
+            Event::new("title6", "desc6", "13/03/2001", "-", 3.6, None, None, None),
             Event::new(
                 "title7",
                 "desc7",
@@ -480,6 +511,7 @@ mod tests {
                 "-",
                 3.6,
                 Some("Pisa"),
+                None,
                 None,
             ),
         ];

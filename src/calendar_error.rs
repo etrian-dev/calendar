@@ -34,7 +34,6 @@ impl Debug for CalendarError {
 }
 impl From<Error> for CalendarError {
     fn from(e: Error) -> Self {
-        Self::CalendarNotFound(
-            format!("Calendar not found: {}", e.to_string()))
+        Self::CalendarNotFound(format!("Calendar not found: {}", e))
     }
 }
