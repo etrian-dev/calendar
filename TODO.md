@@ -4,7 +4,7 @@
  - [ ] add INTERVAL=?? in recurrence parsing (see [RFC](https://icalendar.org/iCalendar-RFC-5545/3-8-5-3-recurrence-rule.html))
  - [ ] detect and warn the user when adding overlapping events
  - [ ] shell mode as a binary
- - [ ] calendar owner (at creation and editing w/ flags)
+ - [x] calendar owner (at creation and editing w/ flags)
  - [ ] test recurrence overlaps
 ## Event struct
  - [x] Add support for recurrent events
