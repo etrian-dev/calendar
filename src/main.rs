@@ -30,6 +30,13 @@ fn main() {
                 false
             }
         },
+        (Some(Commands::Edit(x)), false) => match cli::handle_edit(&mut cal, x) {
+            Ok(x) => x,
+            Err(e) => {
+                error!("{}", e);
+                false
+            }
+        },
         (Some(Commands::Remove(rm)), false) => cli::handle_remove(&mut cal, rm),
         (Some(Commands::List(l)), _) => cli::handle_list(&cal, l),
         (Some(Commands::Set(params)), false) => cli::handle_params(&mut cal, params),

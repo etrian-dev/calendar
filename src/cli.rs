@@ -7,7 +7,7 @@ use std::io::Read;
 use std::path::Path;
 use std::result::Result;
 
-use chrono::{Datelike, NaiveDateTime, Timelike};
+use chrono::{Datelike, NaiveDateTime, Timelike, Duration, NaiveDate, NaiveTime};
 use clap::{ArgGroup, Args, Parser, Subcommand};
 use icalendar::parser::{Component, Property};
 
@@ -33,6 +33,9 @@ pub struct Cli {
     /// Create a calendar
     #[clap(short, long)]
     pub create: Option<String>,
+    /// Specify the calendar's name
+    #[clap(short, long)]
+    pub name: Option<String>,
     /// Delete a calendar
     #[clap(short, long)]
     pub delete: Option<String>,
@@ -55,7 +58,7 @@ fn read_calendar(p: &Path) -> Result<Calendar, CalendarError> {
     ))
 }
 
-fn create_calendar(calname: &str, p: &Path) -> Result<Calendar, CalendarError> {
+fn create_calendar(calname: &str, cal_owner: &str, p: &Path) -> Result<Calendar, CalendarError> {
     let cal_file = p.join(calname).with_extension("json");
     let dir_iter = fs::read_dir(p)?;
 
@@ -64,8 +67,7 @@ fn create_calendar(calname: &str, p: &Path) -> Result<Calendar, CalendarError> {
             return Err(CalendarError::CalendarAlreadyExists(calname.to_string()));
         }
     }
-    // FIXME: currently setting the owner is unsupported
-    Ok(Calendar::new("", calname))
+    Ok(Calendar::new(calname, cal_owner))
 }
 
 fn delete_calendar(calname: &str, p: &Path) -> bool {
@@ -135,8 +137,14 @@ impl Cli {
                 read_calendar(&data_dir.join(Path::new(&s))).and_then(|c| Ok(Some(c)))
             }
             Cli {
-                create: Some(s), ..
-            } => create_calendar(s, data_dir).and_then(|c| Ok(Some(c))),
+                create: Some(owner), name, ..
+            } => {
+                let mut calname = owner;
+                if let Some(n) = name {
+                    calname = n;
+                }
+                create_calendar(calname, owner, data_dir).and_then(|c| Ok(Some(c)))   
+            },
             Cli {
                 delete: Some(s), ..
             } => {
@@ -183,9 +191,11 @@ pub enum Commands {
     Add(Add),
     /// Removes an event, given its eid
     Remove(Remove),
+    /// Edit an event, given its eid
+    Edit(Edit),
     /// Lists events with some filter
     List(Filter),
-    /// Sets some parameter (such as the calendar's owner)
+    /// Sets some parameter about the calendar
     Set(CalParams),
 }
 
@@ -222,9 +232,44 @@ pub struct Add {
 }
 
 #[derive(Args)]
+#[clap(group(ArgGroup::new("input").multiple(true)))]
+pub struct Edit {
+    #[clap(group = "input")]
+    /// The event eid to be modified
+    eid: u64,
+    #[clap(group = "input")]
+    /// The event's title
+    title: Option<String>,
+    #[clap(group = "input")]
+    /// The event's description
+    description: Option<String>,
+    #[clap(group = "input")]
+    /// The event's start date. Supported formats: %d/%m/%yyyy
+    start_date: Option<String>,
+    #[clap(group = "input")]
+    /// The event's start time. Supported formats: %H:%M
+    start_time: Option<String>,
+    #[clap(group = "input")]
+    /// The event's duration, expressed in hours (floating point)
+    duration: Option<String>,
+    #[clap(group = "input")]
+    /// The event's location, as a string
+    location: Option<String>,
+    #[clap(group = "input")]
+    /// The event's recurrence
+    recurrence: Option<String>,
+    #[clap(group = "input")]
+    // The event's tags
+    tags: Vec<String>,
+    #[clap(long, group = "ics", conflicts_with = "input")]
+    /// Load the events to be modified from an .ics file (iCalendar format)
+    from_file: Option<String>,
+}
+
+#[derive(Args)]
 pub struct Remove {
     /// The id of the event to be removed
-    eid: Option<u64>,
+    eid: u64,
     #[clap(short, long)]
     /// Delete all events starting at the given date
     from: Option<String>,
@@ -419,6 +464,54 @@ pub fn handle_add(cal: &mut Calendar, x: Add) -> Result<bool, CalendarError> {
     }
 }
 
+pub fn handle_edit(cal: &mut Calendar, x: Edit) -> Result<bool, CalendarError> {
+    if let Some(_) = x.from_file {
+        return Err(CalendarError::Unknown("Unimplemented!".to_owned()));
+    }
+    match cal.get_event(x.eid) {
+        Ok(ev) => {
+            if let Some(title) = x.title {
+                ev.set_title(&title);
+            }
+            if let Some(descr) = x.description {
+                ev.set_description(&descr);
+            }
+            if let Some(s) = x.start_date {
+                let date_formats = vec!["%d/%m/%Y", "%Y-%m-%d"];
+                for fmt in date_formats {
+                    if let Ok(val) = NaiveDate::parse_from_str(&s, fmt) {
+                        ev.set_start_date((val.day(), val.month(), val.year()));
+                        break;
+                    }
+                }
+            }
+            if let Some(s) = x.start_time {
+                let time_formats = vec!["%H:%M", "%H:%M:%S"];
+                for fmt in time_formats {
+                    if let Ok(val) = NaiveTime::parse_from_str(&s, fmt) {
+                        ev.set_start_time((val.hour(), val.minute(), val.second()));
+                        break;
+                    }
+                }
+            }
+            if let Some(duration) = x.duration {
+                ev.set_duration(&Duration::hours(duration.parse::<i32>().unwrap().into()));
+            }
+            if let Some(loc) = x.location {
+                ev.set_location(&loc);
+            }
+            if let Some(rec) = x.recurrence {
+                ev.set_recurrence(&rec);
+            }
+            if x.tags.len() > 0 {
+                ev.set_tags(x.tags);
+            }
+            Ok(true)
+        },
+        _ => Err(CalendarError::Unknown("Unimplemented!".to_string())),
+    }
+}
+
 pub fn handle_list(cal: &Calendar, x: Filter) -> bool {
     let events = match x {
         Filter { today: true, .. } => cal.list_events_today(),
@@ -461,7 +554,7 @@ pub fn handle_remove(cal: &mut Calendar, x: Remove) -> bool {
             true
         }
         Remove {
-            eid: Some(eid),
+            eid,
             from: None,
             to: None,
             filter: None,

@@ -2,6 +2,7 @@ use std::fmt;
 use std::fmt::{Debug, Display};
 use std::io::Error;
 
+#[derive(Clone)]
 pub enum CalendarError {
     CalendarNotFound(String),
     CalendarAlreadyExists(String),
@@ -37,3 +38,4 @@ impl From<Error> for CalendarError {
         Self::CalendarNotFound(format!("Calendar not found: {}", e))
     }
 }
+

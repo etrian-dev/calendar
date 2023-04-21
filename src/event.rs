@@ -172,6 +172,7 @@ pub fn next_occurrence(ev: &Event, cadence: &Cadence) -> (NaiveDateTime, NaiveDa
 pub struct EventMetadata {
     tags: Vec<String>,
     creation: DateTime<Local>,
+    modification: DateTime<Local>,
 }
 
 impl Default for EventMetadata {
@@ -179,6 +180,7 @@ impl Default for EventMetadata {
         EventMetadata {
             tags: Vec::default(),
             creation: Local::now(),
+            modification: Local::now(),
         }
     }
 }
@@ -276,6 +278,7 @@ impl Event {
                 Some(t) => EventMetadata {
                     tags: t,
                     creation: Local::now(),
+                    modification: Local::now(),
                 },
                 None => EventMetadata::default(),
             },
@@ -340,6 +343,10 @@ impl Event {
 
     pub fn set_recurrence(&mut self, rec: &str) {
         self.recurrence = parse_recurrence(rec);
+    }
+
+    pub fn set_tags(&mut self, tags: Vec<String>) {
+        self.metadata.set_tags(tags);
     }
 
     pub fn get_title(&self) -> &str {

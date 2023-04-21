@@ -93,6 +93,13 @@ impl Calendar {
         self.events.clear();
     }
 
+    pub fn get_event(&mut self, eid: u64) -> Result<&mut Event, CalendarError> {
+        if let Some(ev) = self.events.get_mut(&eid) {
+            Ok(ev)
+        }
+        else {Err(CalendarError::EventNotFound(eid))}
+    }
+
     pub fn add_event(&mut self, ev: Event) -> bool {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         ev.hash(&mut h);
