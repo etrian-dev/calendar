@@ -7,7 +7,7 @@ use std::io::Read;
 use std::path::Path;
 use std::result::Result;
 
-use chrono::{Datelike, NaiveDateTime, Timelike, Duration, NaiveDate, NaiveTime};
+use chrono::{Datelike, Duration, Local, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use clap::{ArgGroup, Args, Parser, Subcommand};
 use icalendar::parser::{Component, Property};
 
@@ -137,14 +137,16 @@ impl Cli {
                 read_calendar(&data_dir.join(Path::new(&s))).and_then(|c| Ok(Some(c)))
             }
             Cli {
-                create: Some(owner), name, ..
+                create: Some(owner),
+                name,
+                ..
             } => {
                 let mut calname = owner;
                 if let Some(n) = name {
                     calname = n;
                 }
-                create_calendar(calname, owner, data_dir).and_then(|c| Ok(Some(c)))   
-            },
+                create_calendar(calname, owner, data_dir).and_then(|c| Ok(Some(c)))
+            }
             Cli {
                 delete: Some(s), ..
             } => {
@@ -507,7 +509,7 @@ pub fn handle_edit(cal: &mut Calendar, x: Edit) -> Result<bool, CalendarError> {
                 ev.set_tags(x.tags);
             }
             Ok(true)
-        },
+        }
         _ => Err(CalendarError::Unknown("Unimplemented!".to_string())),
     }
 }
@@ -526,7 +528,7 @@ pub fn handle_list(cal: &Calendar, x: Filter) -> bool {
             until: None,
             tag: None,
         } => {
-            let today = format!("{}", chrono::Local::today().format("%d/%m/%Y"));
+            let today = format!("{}", Local::now().format("%d/%m/%Y"));
             cal.list_events_between(Some(today), None)
         }
         Filter {

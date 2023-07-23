@@ -96,8 +96,9 @@ impl Calendar {
     pub fn get_event(&mut self, eid: u64) -> Result<&mut Event, CalendarError> {
         if let Some(ev) = self.events.get_mut(&eid) {
             Ok(ev)
+        } else {
+            Err(CalendarError::EventNotFound(eid))
         }
-        else {Err(CalendarError::EventNotFound(eid))}
     }
 
     pub fn add_event(&mut self, ev: Event) -> bool {
@@ -146,7 +147,7 @@ impl Calendar {
     pub fn list_events_today(&self) -> Vec<Event> {
         let mut events_today = Vec::new();
         // get current date
-        let curr_date = Local::today().naive_local();
+        let curr_date = Local::now().date_naive();
         for ev in self.events.values() {
             // If the event is recurrent then expand its recurrent dates
             // if any of those is equal to the current then add the modified event to output vec
@@ -172,7 +173,7 @@ impl Calendar {
     pub fn list_events_week(&self) -> Vec<Event> {
         let mut events_week = Vec::new();
         // get current date
-        let week = Local::today();
+        let week = Local::now();
 
         for ev in self.events.values() {
             // If the event is recurrent then expand its recurrent dates
@@ -206,7 +207,7 @@ impl Calendar {
     pub fn list_events_month(&self) -> Vec<Event> {
         let mut events_month = Vec::new();
         // get current date
-        let dt = Local::today();
+        let dt = Local::now();
         let curr_month = dt.month();
         let curr_year = dt.year();
 
@@ -434,7 +435,7 @@ mod tests {
         let mut cal = Calendar::new("owner", "test");
         for offt in -365..365 {
             let date_offt = dt
-                .date()
+                .naive_local()
                 .checked_add_signed(chrono::Duration::days(offt))
                 .unwrap();
             let e = event::Event::new(

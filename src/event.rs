@@ -252,7 +252,7 @@ impl Event {
                         "Unrecognized date format {}: defaults to current date",
                         start_date
                     );
-                    Local::now().date().naive_local()
+                    Local::now().date_naive()
                 }
             },
             start_time: match time {
@@ -328,11 +328,23 @@ impl Event {
     pub fn set_description(&mut self, new_descr: &str) {
         self.description = String::from(new_descr);
     }
-    pub fn set_start_date(&mut self, d_m_y: (u32, u32, i32)) {
-        self.start_date = NaiveDate::from_ymd(d_m_y.2, d_m_y.1, d_m_y.0);
+    pub fn set_start_date(&mut self, d_m_y: (u32, u32, i32)) -> bool {
+        match NaiveDate::from_ymd_opt(d_m_y.2, d_m_y.1, d_m_y.0) {
+            Some(date) => {
+                self.start_date = date;
+                true
+            }
+            None => false,
+        }
     }
-    pub fn set_start_time(&mut self, hms: (u32, u32, u32)) {
-        self.start_time = NaiveTime::from_hms(hms.0, hms.1, 0);
+    pub fn set_start_time(&mut self, hms: (u32, u32, u32)) -> bool {
+        match NaiveTime::from_hms_opt(hms.0, hms.1, 0) {
+            Some(time) => {
+                self.start_time = time;
+                true
+            }
+            None => false,
+        }
     }
     pub fn set_duration(&mut self, new_duration: &Duration) {
         self.duration = Duration::to_owned(new_duration);
@@ -386,7 +398,7 @@ impl Default for Event {
         Event {
             title: String::new(),
             description: String::new(),
-            start_date: now.date().naive_local(),
+            start_date: now.date_naive(),
             start_time: now.time(),
             duration: Duration::zero(),
             location: String::from(""),
@@ -434,8 +446,8 @@ mod tests {
     fn test_event_new() {
         let t = String::from("Some title");
         let des = String::from("Some description");
-        let dt = NaiveDate::from_ymd(2022, 7, 13);
-        let tm = NaiveTime::from_hms(12, 23, 0);
+        let dt = NaiveDate::from_ymd_opt(2022, 7, 13).unwrap();
+        let tm = NaiveTime::from_hms_opt(12, 23, 0).unwrap();
         let dur = 2.75;
         let loc = String::from("Some location");
 
@@ -459,10 +471,10 @@ mod tests {
         e2.set_description(&des);
         assert_eq!(e1.description, e2.description);
         assert_ne!(e1.start_date, e2.start_date);
-        e2.set_start_date((dt.day(), dt.month(), dt.year()));
+        assert!(e2.set_start_date((dt.day(), dt.month(), dt.year())));
         assert_eq!(e1.start_date, e2.start_date);
         assert_ne!(e1.start_time, e2.start_time);
-        e2.set_start_time((tm.hour(), tm.minute(), tm.second()));
+        assert!(e2.set_start_time((tm.hour(), tm.minute(), tm.second())));
         assert_eq!(e1.start_time, e2.start_time);
         assert_ne!(e1.duration, e2.duration);
         e2.set_duration(&Duration::hours(dur as i64));
