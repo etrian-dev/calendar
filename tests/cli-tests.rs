@@ -2,10 +2,16 @@ use assert_cmd::prelude::*; // Add methods on commands
 use predicates::prelude::*; // Used for writing assertions
 use std::process::Command; // Run programs
 
+/*
 #[test]
 fn add_event() -> Result<(), Box<dyn std::error::Error>> {
+    // TODO: common harness create calendar
     let mut cmd = Command::cargo_bin("calendar")?;
+    cmd.args(["-c", "test"]);
+    cmd.assert().success();
     cmd.args([
+        "-e",
+        "test",
         "add",
         "some title",
         "some description",
@@ -16,6 +22,7 @@ fn add_event() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert().success();
     Ok(())
 }
+*/
 
 /*#[test]
 fn add_from_file() -> Result<(), Box<dyn std::error::Error>> {

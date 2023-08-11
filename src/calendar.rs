@@ -18,44 +18,20 @@ pub struct Calendar {
 
 /// Given a recurrence and starting date and time, computes the dates and times
 /// of the recurrences of the event and returns them as a vector
-fn expand_recurrence(
-    rec: &Recurrence,
-    dt: &NaiveDate,
-    tm: &NaiveTime,
-) -> Vec<(NaiveDate, NaiveTime)> {
+fn expand_recurrence(rec: &Recurrence, dt: &NaiveDate, tm: &NaiveTime) -> Vec<NaiveDateTime> {
     let mut rec_dates = Vec::new();
     for i in 0..=rec.repetitions() {
         let x = NaiveDateTime::new(*dt, *tm);
-        match rec.cadence() {
-            Cadence::Secondly => {
-                let dt_new = x + Duration::seconds(i as i64);
-                rec_dates.push((dt_new.date(), dt_new.time()));
-            }
-            Cadence::Minutely => {
-                let dt_new = x + Duration::minutes(i as i64);
-                rec_dates.push((dt_new.date(), dt_new.time()));
-            }
-            Cadence::Hourly => {
-                let dt_new = x.checked_add_signed(Duration::hours(i as i64)).unwrap();
-                rec_dates.push((dt_new.date(), dt_new.time()));
-            }
-            Cadence::Daily => {
-                let dt_new = x.checked_add_signed(Duration::days(i as i64)).unwrap();
-                rec_dates.push((dt_new.date(), dt_new.time()));
-            }
-            Cadence::Weekly => {
-                let dt_new = x.checked_add_signed(Duration::weeks(i as i64)).unwrap();
-                rec_dates.push((dt_new.date(), dt_new.time()));
-            }
-            Cadence::Monthly => {
-                let dt_new = x.with_month(dt.month() + i as u32).unwrap();
-                rec_dates.push((dt_new.date(), dt_new.time()));
-            }
-            Cadence::Yearly => {
-                let dt_new = x.with_year(dt.year() + i as i32).unwrap();
-                rec_dates.push((dt_new.date(), dt_new.time()));
-            }
-        }
+        let dt_new = match rec.cadence() {
+            Cadence::Secondly => x + Duration::seconds(i as i64),
+            Cadence::Minutely => x + Duration::minutes(i as i64),
+            Cadence::Hourly => x.checked_add_signed(Duration::hours(i as i64)).unwrap(),
+            Cadence::Daily => x.checked_add_signed(Duration::days(i as i64)).unwrap(),
+            Cadence::Weekly => x.checked_add_signed(Duration::weeks(i as i64)).unwrap(),
+            Cadence::Monthly => x.with_month(dt.month() + i as u32).unwrap(),
+            Cadence::Yearly => x.with_year(dt.year() + i as i32).unwrap(),
+        };
+        rec_dates.push(dt_new);
     }
     rec_dates
 }
@@ -144,130 +120,32 @@ impl Calendar {
         }
     }
 
-    pub fn list_events_today(&self) -> Vec<Event> {
-        let mut events_today = Vec::new();
-        // get current date
-        let curr_date = Local::now().date_naive();
-        for ev in self.events.values() {
-            // If the event is recurrent then expand its recurrent dates
-            // if any of those is equal to the current then add the modified event to output vec
-            if let Some(rec) = ev.get_recurrence() {
-                for rec_dt in expand_recurrence(rec, &ev.get_start_date(), &ev.get_start_time()) {
-                    if rec_dt.0 == curr_date {
-                        // Since cloning is expensive it is done only on recurrences that should appear
-                        // in the output vector
-                        let mut ev2 = ev.clone();
-                        ev2.set_start_date((rec_dt.0.day(), rec_dt.0.month(), rec_dt.0.year()));
-                        ev2.set_start_time((rec_dt.1.hour(), rec_dt.1.minute(), rec_dt.1.second()));
-                        events_today.push(ev2);
-                    }
-                }
-            } else if curr_date == ev.get_start_date() {
-                events_today.push(ev.clone());
-            }
-        }
-        // sorts today's events by their start time
-        events_today.sort_unstable_by_key(|ev| ev.get_start_time());
-        events_today
-    }
-    pub fn list_events_week(&self) -> Vec<Event> {
-        let mut events_week = Vec::new();
-        // get current date
-        let week = Local::now();
-
-        for ev in self.events.values() {
-            // If the event is recurrent then expand its recurrent dates
-            // if any of those is equal to the current then add the modified event to output vec
-            if let Some(rec) = ev.get_recurrence() {
-                for rec_dt in expand_recurrence(rec, &ev.get_start_date(), &ev.get_start_time()) {
-                    if rec_dt.0.iso_week() == week.iso_week() {
-                        // Since cloning is expensive it is done only on recurrences that should appear
-                        // in the output vector
-                        let mut ev2 = ev.clone();
-                        ev2.set_start_date((rec_dt.0.day(), rec_dt.0.month(), rec_dt.0.year()));
-                        ev2.set_start_time((rec_dt.1.hour(), rec_dt.1.minute(), rec_dt.1.second()));
-                        events_week.push(ev2);
-                    }
-                }
-            } else if ev.get_start_date().iso_week() == week.iso_week() {
-                events_week.push(ev.clone());
-            }
-        }
-        // sorts events by their start date and then start time
-        events_week.sort_unstable_by(|e1, e2| {
-            if e1.get_start_date().cmp(&e2.get_start_date()) == core::cmp::Ordering::Equal {
-                e1.get_start_time().cmp(&e2.get_start_time())
-            } else {
-                e1.get_start_date().cmp(&e2.get_start_date())
-            }
-        });
-        events_week
-    }
-
-    pub fn list_events_month(&self) -> Vec<Event> {
-        let mut events_month = Vec::new();
-        // get current date
-        let dt = Local::now();
-        let curr_month = dt.month();
-        let curr_year = dt.year();
-
-        for ev in self.events.values() {
-            // If the event is recurrent then expand its recurrent dates
-            // if any of those is equal to the current then add the modified event to output vec
-            if let Some(rec) = ev.get_recurrence() {
-                for rec_dt in expand_recurrence(rec, &ev.get_start_date(), &ev.get_start_time()) {
-                    if rec_dt.0.month() == curr_month && rec_dt.0.year() == curr_year {
-                        // Since cloning is expensive it is done only on recurrences that should appear
-                        // in the output vector
-                        let mut ev2 = ev.clone();
-                        ev2.set_start_date((rec_dt.0.day(), rec_dt.0.month(), rec_dt.0.year()));
-                        ev2.set_start_time((rec_dt.1.hour(), rec_dt.1.minute(), rec_dt.1.second()));
-                        events_month.push(ev2);
-                    }
-                }
-            } else if ev.get_start_date().month() == curr_month
-                && ev.get_start_date().year() == curr_year
-            {
-                events_month.push(ev.clone());
-            }
-        }
-        // sorts events by their start date and then start time
-        events_month.sort_unstable_by(|e1, e2| {
-            if e1.get_start_date().cmp(&e2.get_start_date()) == core::cmp::Ordering::Equal {
-                e1.get_start_time().cmp(&e2.get_start_time())
-            } else {
-                e1.get_start_date().cmp(&e2.get_start_date())
-            }
-        });
-        events_month
-    }
-
-    pub fn list_events_between(&self, from: Option<String>, until: Option<String>) -> Vec<Event> {
-        let from_date = match from {
-            Some(s) => NaiveDate::parse_from_str(&s, "%d/%m/%Y").unwrap_or(chrono::NaiveDate::MIN),
-            None => chrono::NaiveDate::MIN,
-        };
-        let until_date = match until {
-            Some(s) => NaiveDate::parse_from_str(&s, "%d/%m/%Y").unwrap_or(chrono::NaiveDate::MAX),
-            None => chrono::NaiveDate::MAX,
-        };
-
+    /// TODO: provide some helpers like before
+    pub fn list_events_between(
+        &self,
+        from: Option<NaiveDateTime>,
+        until: Option<NaiveDateTime>,
+    ) -> Vec<Event> {
         let mut events_between = Vec::new();
+        let from_dt = from.unwrap_or(NaiveDateTime::MIN);
+        let until_dt = until.unwrap_or(NaiveDateTime::MAX);
+
         for ev in self.events.values() {
+            let ev_dt = ev.get_start_date().and_time(ev.get_start_time());
             // If the event is recurrent then expand its recurrent dates
             // if any of those is equal to the current then add the modified event to output vec
             if let Some(rec) = ev.get_recurrence() {
                 for rec_dt in expand_recurrence(rec, &ev.get_start_date(), &ev.get_start_time()) {
-                    if rec_dt.0 <= until_date && rec_dt.0 >= from_date {
+                    if rec_dt >= from_dt && rec_dt <= until_dt {
                         // Since cloning is expensive it is done only on recurrences that should appear
                         // in the output vector
                         let mut ev2 = ev.clone();
-                        ev2.set_start_date((rec_dt.0.day(), rec_dt.0.month(), rec_dt.0.year()));
-                        ev2.set_start_time((rec_dt.1.hour(), rec_dt.1.minute(), rec_dt.1.second()));
+                        ev2.set_start_date((rec_dt.day(), rec_dt.month(), rec_dt.year()));
+                        ev2.set_start_time((rec_dt.hour(), rec_dt.minute(), rec_dt.second()));
                         events_between.push(ev2);
                     }
                 }
-            } else if ev.get_start_date() <= until_date && ev.get_start_date() >= from_date {
+            } else if ev_dt <= until_dt && ev_dt >= from_dt {
                 events_between.push(ev.clone());
             }
         }
@@ -326,7 +204,7 @@ impl Default for Calendar {
 }
 #[cfg(test)]
 mod tests {
-    use chrono::Datelike;
+    use chrono::{Datelike, Local, Timelike};
     use std::collections::HashMap;
     use std::hash::{Hash, Hasher};
 
@@ -431,13 +309,10 @@ mod tests {
     #[test]
     /// test week filter
     fn test_week_filter() {
-        let dt = chrono::Local::now();
+        let dt = Local::now().naive_local();
         let mut cal = Calendar::new("owner", "test");
         for offt in -365..365 {
-            let date_offt = dt
-                .naive_local()
-                .checked_add_signed(chrono::Duration::days(offt))
-                .unwrap();
+            let date_offt = dt.checked_add_signed(chrono::Duration::days(offt)).unwrap();
             let e = event::Event::new(
                 "test",
                 "test",
@@ -451,7 +326,22 @@ mod tests {
             cal.add_event(e);
         }
 
-        for ev in cal.list_events_week() {
+        let weekday = dt.weekday();
+        let start = dt
+            .with_day(dt.day() - weekday.num_days_from_monday())
+            .unwrap()
+            .with_hour(0)
+            .unwrap()
+            .with_minute(0)
+            .unwrap();
+        let end = dt
+            .with_day(dt.day() - weekday.num_days_from_sunday())
+            .unwrap()
+            .with_hour(0)
+            .unwrap()
+            .with_minute(0)
+            .unwrap();
+        for ev in cal.list_events_between(Some(start), Some(end)) {
             assert_eq!(ev.get_start_date().iso_week(), dt.iso_week());
         }
     }

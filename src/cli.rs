@@ -515,10 +515,49 @@ pub fn handle_edit(cal: &mut Calendar, x: Edit) -> Result<bool, CalendarError> {
 }
 
 pub fn handle_list(cal: &Calendar, x: Filter) -> bool {
+    let dt = Local::now().naive_local();
+    /// TODO: error handling in the match arms abstracted into a function
     let events = match x {
-        Filter { today: true, .. } => cal.list_events_today(),
-        Filter { week: true, .. } => cal.list_events_week(),
-        Filter { month: true, .. } => cal.list_events_month(),
+        Filter { today: true, .. } => {
+            let start = dt.with_hour(0).unwrap().with_minute(0).unwrap();
+            let end = dt.with_hour(23).unwrap().with_minute(59).unwrap();
+            cal.list_events_between(Some(start), Some(end))
+        }
+        Filter { week: true, .. } => {
+            let weekday = dt.weekday();
+            let start = dt
+                .with_day(dt.day() - weekday.num_days_from_monday())
+                .unwrap()
+                .with_hour(0)
+                .unwrap()
+                .with_minute(0)
+                .unwrap();
+            let end = dt
+                .with_day(dt.day() - weekday.num_days_from_sunday())
+                .unwrap()
+                .with_hour(0)
+                .unwrap()
+                .with_minute(0)
+                .unwrap();
+            cal.list_events_between(Some(start), Some(end))
+        }
+        Filter { month: true, .. } => {
+            let start = dt
+                .with_day(1)
+                .unwrap()
+                .with_hour(0)
+                .unwrap()
+                .with_minute(0)
+                .unwrap();
+            let end = dt
+                .with_day(31)
+                .unwrap_or(dt.with_day(30).unwrap())
+                .with_hour(23)
+                .unwrap()
+                .with_minute(59)
+                .unwrap();
+            cal.list_events_between(Some(start), Some(end))
+        }
         Filter { tag: Some(tag), .. } => cal.list_events_tagged(tag),
         Filter {
             today: false,
@@ -528,12 +567,30 @@ pub fn handle_list(cal: &Calendar, x: Filter) -> bool {
             until: None,
             tag: None,
         } => {
-            let today = format!("{}", Local::now().format("%d/%m/%Y"));
-            cal.list_events_between(Some(today), None)
+            // by default list all events starting from today
+            let start = dt.with_hour(0).unwrap().with_minute(0).unwrap();
+            cal.list_events_between(Some(start), None)
         }
         Filter {
             from: x, until: y, ..
-        } => cal.list_events_between(x, y),
+        } => {
+            /// FIXME: Some error handling here
+            let from_dt = match x {
+                Some(s) => Some(
+                    NaiveDateTime::parse_from_str(&s, "%d/%m/%Y")
+                        .unwrap_or(chrono::NaiveDateTime::MIN),
+                ),
+                None => None,
+            };
+            let until_dt = match y {
+                Some(s) => Some(
+                    NaiveDateTime::parse_from_str(&s, "%d/%m/%Y")
+                        .unwrap_or(chrono::NaiveDateTime::MAX),
+                ),
+                None => None,
+            };
+            cal.list_events_between(from_dt, until_dt)
+        }
     };
     println!("{}", cal);
     for ev in events {
